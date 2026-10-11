@@ -1,0 +1,24 @@
+# West manifest for the DontFall M4 (Cortex-M4, Zephyr) firmware.
+#
+# Zephyr and its modules are pinned to EXACTLY what meta-zephyr (scarthgap)
+# builds in the DontFall Yocto image, so dev (west) and release (bitbake)
+# compile the same sources. Bump together with meta-zephyr in
+# DontFall/default.xml; scripts/check-zephyr-pin.sh verifies they match.
+manifest:
+  self:
+    path: DontFall-M4
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: 36940db938a8f4a1e919496793ed439850a221c2
+      import:
+        name-allowlist:
+          - cmsis
+          - hal_stm32
+          - libmetal
+          - open-amp
