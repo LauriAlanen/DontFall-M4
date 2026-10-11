@@ -1,0 +1,20 @@
+# Zephyr build container for the DontFall M4 firmware. Use the wrappers in
+# scripts/ (they set WEST_TOPDIR, UID and GID):
+#
+#   scripts/init.sh     build image, create the west workspace, west update
+#   scripts/build.sh    west build for stm32mp157c_dk2
+#
+# The west workspace (parent of this repo) is mounted at its host path, so
+# build/compile_commands.json is valid for editors on the host too.
+services:
+  zephyr:
+    image: dontfall-zephyr:latest
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    working_dir: ${WEST_TOPDIR:?run via scripts/*.sh}/DontFall-M4
+    volumes:
+      - ${WEST_TOPDIR:?run via scripts/*.sh}:${WEST_TOPDIR:?run via scripts/*.sh}
+    init: true
