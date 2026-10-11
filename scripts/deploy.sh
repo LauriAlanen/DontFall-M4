@@ -39,8 +39,10 @@ ssh "${SSH_OPTS[@]}" "root@$TARGET" "
     [ \"\$(cat \$R/state)\" = offline ] || echo stop > \$R/state
     echo -n $FW > \$R/firmware
     echo start > \$R/state
-    echo \"state: \$(cat \$R/state)\"
-"
+    S=\$(cat \$R/state)
+    echo \"state: \$S\"
+    [ \"\$S\" = running ]
+" || die "M4 did not reach 'running' - see trace0 on the board (--log)"
 
 if [ "$LOG" = 1 ]; then
     sleep 1

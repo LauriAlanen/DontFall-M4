@@ -9,8 +9,10 @@ ARG UID=1000
 ARG GID=1000
 ARG USERNAME=zephyr
 ARG ZEPHYR_SDK_VERSION=0.16.9
-# Python requirements are taken from the pinned Zephyr commit (west.yml).
-ARG ZEPHYR_REV=36940db938a8f4a1e919496793ed439850a221c2
+# Python requirements are taken from the pinned Zephyr commit. Passed as a
+# build arg from west.yml by scripts/lib.sh - no default, so a manual
+# 'docker build' without it fails loudly instead of silently drifting.
+ARG ZEPHYR_REV
 
 ENV DEBIAN_FRONTEND=noninteractive
 

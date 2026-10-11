@@ -14,6 +14,7 @@ services:
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
+        ZEPHYR_REV: ${ZEPHYR_REV:?run via scripts/*.sh}
     working_dir: ${WEST_TOPDIR:?run via scripts/*.sh}/DontFall-M4
     volumes:
       - ${WEST_TOPDIR:?run via scripts/*.sh}:${WEST_TOPDIR:?run via scripts/*.sh}
