@@ -15,4 +15,5 @@ fi
 
 echo "==> west update"
 zrun west update --narrow -o=--depth=1
+"$REPO/scripts/apply-patches.sh"
 echo "==> Done. Build with scripts/build.sh"

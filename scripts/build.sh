@@ -4,4 +4,5 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+"$REPO/scripts/apply-patches.sh"
 zrun west build -b stm32mp157c_dk2 app -d build "$@"

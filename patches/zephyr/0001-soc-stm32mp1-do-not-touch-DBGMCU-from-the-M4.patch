@@ -1,0 +1,20 @@
+diff --git a/soc/st/stm32/common/soc_config.c b/soc/st/stm32/common/soc_config.c
+index 6e565085..d50e09b8 100644
+--- a/soc/st/stm32/common/soc_config.c
++++ b/soc/st/stm32/common/soc_config.c
+@@ -63,7 +63,14 @@ static int st_stm32_common_config(void)
+ #endif /* CONFIG_USE_SEGGER_RTT */
+ 
+ 
+-#if defined(CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP)
++#if defined(CONFIG_SOC_SERIES_STM32MP1X)
++	/*
++	 * The Cortex-M4 of STM32MP15 is a coprocessor: the debug unit (DBGMCU)
++	 * belongs to the A7 side and, with OP-TEE controlling debug access
++	 * (secure boot), an M4 access to it stalls the core forever. Leave the
++	 * debug configuration to Linux/TF-A.
++	 */
++#elif defined(CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP)
+ 
+ #if defined(CONFIG_SOC_SERIES_STM32H7X) || defined(CONFIG_SOC_SERIES_STM32H7RSX) \
+ 	|| defined(CONFIG_SOC_SERIES_STM32MP1X)
