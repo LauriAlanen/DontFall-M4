@@ -9,6 +9,9 @@ Release builds come from the [DontFall](https://github.com/LauriAlanen/DontFall)
 Yocto image (`dontfall-m4` recipe, meta-zephyr multiconfig). Day to day you
 build and load it with west, without bitbake.
 
+Full workflow across all DontFall repos (setup, dev loops, release):
+[DontFall/docs/development.md](https://github.com/LauriAlanen/DontFall/blob/main/docs/development.md).
+
 ## Workspace layout
 
 This repo is the manifest repo of a west workspace:
