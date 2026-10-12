@@ -3,7 +3,17 @@
 Zephyr firmware for the Cortex-M4 coprocessor of the STM32MP157C-DK2.
 Linux on the A7 loads it through remoteproc; the two talk over OpenAMP
 (rpmsg). The firmware announces an `rpmsg-tty` channel (`/dev/ttyRPMSG0` on
-Linux) and answers every message with `hello from M4: <message>`.
+Linux) and speaks a small line protocol on it (`app/src/protocol.h`): the
+A7 sends `PING <seq>` heartbeats, the M4 answers `PONG <seq>`. While
+heartbeats keep arriving the orange LED LD7 blinks; after 1.5 s without one
+it goes off. A blinking LD7 proves remoteproc, rpmsg and the A7 app all work.
+
+| File | Role |
+|------|------|
+| `app/src/main.c` | wires the modules together |
+| `app/src/ipc.c` | OpenAMP/rpmsg transport (rpmsg-tty endpoint) |
+| `app/src/protocol.c` | line assembly and command dispatch |
+| `app/src/heartbeat.c` | A7 liveness watchdog, drives LD7 |
 
 Release builds come from the [DontFall](https://github.com/LauriAlanen/DontFall)
 Yocto image (`dontfall-m4` recipe, meta-zephyr multiconfig). Day to day you
@@ -57,8 +67,10 @@ Talk to it from the board:
 
 ```sh
 stty -F /dev/ttyRPMSG0 raw -echo    # no tty echo, or replies bounce back
-cat /dev/ttyRPMSG0 & echo hi > /dev/ttyRPMSG0
+cat /dev/ttyRPMSG0 & echo "PING 1" > /dev/ttyRPMSG0   # -> PONG 1, LD7 blinks for 1.5 s
 ```
+
+Stop `dontfall-app.service` first, or it competes for the tty.
 
 ## Zephyr patches
 
