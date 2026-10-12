@@ -2,7 +2,8 @@
  * DontFall M4 firmware: OpenAMP remote on the STM32MP157 Cortex-M4.
  *
  * Announces an "rpmsg-tty" channel (Linux: /dev/ttyRPMSG0) and answers every
- * message with "hello from M4: <message>".
+ * message with "hello from M4: <message>". Also toggles the orange user
+ * LED LD7 (PH7, Zephyr led0) every 500 ms.
  *
  * Derived from zephyr/samples/subsys/ipc/openamp_rsc_table
  * Copyright (c) 2020, STMICROELECTRONICS
@@ -11,6 +12,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/ipm.h>
 #include <zephyr/sys/printk.h>
 #include <string.h>
@@ -28,7 +30,7 @@
 #define SHM_START_ADDR DT_REG_ADDR(SHM_NODE)
 #define SHM_SIZE       DT_REG_SIZE(SHM_NODE)
 
-#define REPLY_PREFIX     "hello from M4: "
+#define REPLY_PREFIX     "Moi from M4: "
 #define REPLY_PREFIX_LEN (sizeof(REPLY_PREFIX) - 1)
 /* rpmsg payload limit with the default 512 byte buffers */
 #define RPMSG_MAX_PAYLOAD 496
@@ -36,6 +38,17 @@
 #define MNG_STACK_SIZE 1024
 /* extra room for the tx buffer */
 #define TTY_STACK_SIZE (1024 + RPMSG_MAX_PAYLOAD)
+
+#define BLINK_PERIOD_MS 500
+
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+
+static void blink_expiry(struct k_timer *timer)
+{
+	gpio_pin_toggle_dt(&led);
+}
+
+K_TIMER_DEFINE(blink_timer, blink_expiry, NULL);
 
 K_THREAD_STACK_DEFINE(thread_mng_stack, MNG_STACK_SIZE);
 K_THREAD_STACK_DEFINE(thread_tty_stack, TTY_STACK_SIZE);
@@ -244,6 +257,14 @@ task_end:
 int main(void)
 {
 	printk("dontfall-m4 up\n");
+
+	if (!gpio_is_ready_dt(&led) ||
+	    gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE)) {
+		printk("LD7 not available\n");
+	} else {
+		k_timer_start(&blink_timer, K_MSEC(BLINK_PERIOD_MS),
+			      K_MSEC(BLINK_PERIOD_MS));
+	}
 
 	k_thread_create(&thread_mng_data, thread_mng_stack, MNG_STACK_SIZE, rpmsg_mng_task,
 			NULL, NULL, NULL, K_PRIO_COOP(8), 0, K_NO_WAIT);
