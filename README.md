@@ -15,6 +15,11 @@ it goes off. A blinking LD7 proves remoteproc, rpmsg and the A7 app all work.
 | `app/src/protocol.c` | line assembly and command dispatch |
 | `app/src/heartbeat.c` | A7 liveness watchdog, drives LD7 |
 
+Memory map (`app/boards/stm32mp157c_dk2.overlay`): code in MCU SRAM1
+(128 KB), data in SRAM2 (128 KB), rpmsg buffers in SRAM3, and only the
+vector table at address 0 in RETRAM, where the M4 boots from
+(`CONFIG_ROMSTART_RELOCATION_ROM`).
+
 Release builds come from the [DontFall](https://github.com/LauriAlanen/DontFall)
 Yocto image (`dontfall-m4` recipe, meta-zephyr multiconfig). Day to day you
 build and load it with west, without bitbake.

@@ -4,8 +4,26 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/*
+ * M4 memory map, all in regions Linux reserves for the M4
+ * (remoteproc carveouts):
+ *
+ *   0x00000000  RETRAM   vector table only (CONFIG_ROMSTART_RELOCATION_ROM)
+ *   0x10000000  SRAM1    128K  code, rodata, resource table (zephyr,flash)
+ *   0x10020000  SRAM2    128K  data, bss, stacks, heaps (zephyr,sram)
+ *   0x10040000  SRAM3     64K  rpmsg vrings and buffers (zephyr,ipc_shm)
+ *
+ * Same split as ST's Cube M4 examples. Keeping code and data in separate
+ * regions lets the MPU map code read-only and data execute-never, and
+ * keeps the resource table out of RAM that the heap may claim.
+ */
+
+/delete-node/ &mcusram;
+
 / {
 	chosen {
+		zephyr,flash = &mcusram1;
+		zephyr,sram = &mcusram2;
 		/*
 		 * shared memory reserved for the inter-processor communication
 		 */
@@ -13,12 +31,18 @@
 		zephyr,ipc = &mailbox;
 	};
 
-	mcusram3: memory1@10040000 {
+	mcusram1: memory@10000000 {
+		compatible = "mmio-sram";
+		reg = <0x10000000 DT_SIZE_K(128)>;
+	};
+
+	mcusram2: memory@10020000 {
+		compatible = "mmio-sram";
+		reg = <0x10020000 DT_SIZE_K(128)>;
+	};
+
+	mcusram3: memory@10040000 {
 		compatible = "mmio-sram";
 		reg = <0x10040000 DT_SIZE_K(64)>;
 	};
-};
-
-&mcusram {
-	reg = <0x10000000 DT_SIZE_K(256)>;
 };
