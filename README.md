@@ -37,6 +37,7 @@ This repo is the manifest repo of a west workspace:
   DontFall-M4/                 this repo
   zephyr/                      pinned by west.yml
   modules/hal/{cmsis,stm32,libmetal}, modules/lib/open-amp
+  modules/lib/micro_ros_zephyr_module
 ```
 
 `west.yml` pins Zephyr to exactly the commit meta-zephyr (scarthgap) builds
@@ -52,7 +53,8 @@ git clone git@github.com:LauriAlanen/DontFall-M4.git ~/Projects/DontFall-M4-ws/D
 ```
 
 `init.sh` builds the `dontfall-zephyr` container (Zephyr SDK 0.16.9, arm
-only), runs `west init -l` + `west update` and applies `patches/zephyr/`.
+only, plus colcon for micro-ROS), runs `west init -l` + `west update` and
+applies `patches/`.
 Re-run it after changing `west.yml`.
 
 ## Develop
@@ -77,15 +79,21 @@ cat /dev/ttyRPMSG0 & echo "PING 1" > /dev/ttyRPMSG0   # -> PONG 1, LD7 blinks fo
 
 Stop `dontfall-app.service` first, or it competes for the tty.
 
-## Zephyr patches
+## Patches
 
-`patches/zephyr/*.patch` are applied on top of the pinned Zephyr by
-`scripts/apply-patches.sh` (west) and by the `dontfall-m4` recipe (Yocto):
+`patches/<project>/*.patch` are applied on top of the pinned west projects
+by `scripts/apply-patches.sh`. The `dontfall-m4` recipe (Yocto) applies the
+Zephyr ones:
 
 - `0001` - don't touch DBGMCU from the M4: with OP-TEE/secure boot an M4
   access to the debug unit stalls the core before `main()`.
 - `0002` - backport: the resource table trace entry must point at the RAM
   console buffer, not the pointer to it.
+
+`micro_ros_zephyr_module` (west only until micro-ROS builds in bitbake):
+
+- `0001` - a "custom" transport choice, so the application can provide
+  its own transport (the module only has UART/USB/UDP).
 
 ## Release
 

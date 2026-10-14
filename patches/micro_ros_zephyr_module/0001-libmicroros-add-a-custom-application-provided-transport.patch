@@ -1,0 +1,58 @@
+From 6e3a4932dbf67e2790fa42fa0ba8d8c7dc034fe5 Mon Sep 17 00:00:00 2001
+From: Lauri Alanen <laurialanen1@gmail.com>
+Date: Wed, 14 Oct 2026 20:39:59 +0300
+Subject: [PATCH] libmicroros: add a custom (application-provided) transport
+ choice
+
+---
+ modules/libmicroros/CMakeLists.txt | 7 ++++++-
+ modules/libmicroros/Kconfig        | 6 ++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/modules/libmicroros/CMakeLists.txt b/modules/libmicroros/CMakeLists.txt
+index 4e8c213..dc30f89 100644
+--- a/modules/libmicroros/CMakeLists.txt
++++ b/modules/libmicroros/CMakeLists.txt
+@@ -81,12 +81,16 @@ elseif(CONFIG_MICROROS_TRANSPORT_SERIAL_USB)
+     set(MICROROS_TRANSPORT_DIR ${MICROROS_DIR}/microros_transports/serial-usb)
+ elseif(CONFIG_MICROROS_TRANSPORT_UDP)
+     set(MICROROS_TRANSPORT_DIR ${MICROROS_DIR}/microros_transports/udp)
++elseif(CONFIG_MICROROS_TRANSPORT_CUSTOM)
++    # transport provided by the application
+ else()
+     message(FATAL_ERROR Please set a micro-ROS transport)
+ endif()
+ 
+-zephyr_library_named(microros_transports)
+ zephyr_include_directories(${MICROROS_DIR}/include)
++
++if(NOT CONFIG_MICROROS_TRANSPORT_CUSTOM)
++zephyr_library_named(microros_transports)
+ zephyr_include_directories(${MICROROS_TRANSPORT_DIR})
+ 
+ zephyr_library_sources(
+@@ -95,6 +99,7 @@ zephyr_library_sources(
+ 
+ add_dependencies(microros microros_transports)
+ add_dependencies(microros_transports libmicroros_project)
++endif()
+ 
+ # Cleaning
+ 
+diff --git a/modules/libmicroros/Kconfig b/modules/libmicroros/Kconfig
+index d918025..1ba9719 100644
+--- a/modules/libmicroros/Kconfig
++++ b/modules/libmicroros/Kconfig
+@@ -25,6 +25,12 @@ if MICROROS
+              select USB_DEVICE_STACK
+         config MICROROS_TRANSPORT_UDP
+             bool "micro-ROS UDP network transport"
++        config MICROROS_TRANSPORT_CUSTOM
++            bool "micro-ROS custom transport provided by the application"
++            help
++                The application registers its own transport with
++                rmw_uros_set_custom_transport(); no transport library
++                is built.
+         
+     endchoice
+ 

@@ -29,6 +29,12 @@ RUN curl -fsSL "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/${ZE
     && pip3 install --no-cache-dir west -r /tmp/requirements-base.txt \
     && rm /tmp/requirements-base.txt
 
+# micro-ROS: micro_ros_zephyr_module builds libmicroros with colcon during
+# the Zephyr build. Pinned so the container stays reproducible; empy and
+# lark match ROS Jazzy's reference platform (Ubuntu 24.04).
+RUN pip3 install --no-cache-dir \
+        colcon-common-extensions==0.3.0 catkin_pkg==1.1.1 lark==1.1.9 empy==3.3.4
+
 RUN cd /opt \
     && wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz" \
     && tar xf "zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz" \
