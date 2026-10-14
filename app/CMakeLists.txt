@@ -16,4 +16,6 @@ target_sources(app PRIVATE
     src/ipc.c
     src/protocol.c
     src/heartbeat.c
+    src/uros.c
+    src/uros_transport.c
 )

@@ -8,12 +8,18 @@ A7 sends `PING <seq>` heartbeats, the M4 answers `PONG <seq>`. While
 heartbeats keep arriving the orange LED LD7 blinks; after 1.5 s without one
 it goes off. A blinking LD7 proves remoteproc, rpmsg and the A7 app all work.
 
+A second `rpmsg-tty` channel (`/dev/ttyRPMSG1`) carries micro-ROS: the M4
+is ROS 2 node `dontfall_m4` and publishes a `std_msgs/Int32` counter on
+`/dontfall_m4/counter` through the micro-ROS Agent on the A7.
+
 | File | Role |
 |------|------|
 | `app/src/main.c` | wires the modules together |
 | `app/src/ipc.c` | OpenAMP/rpmsg transport (rpmsg-tty endpoint) |
 | `app/src/protocol.c` | line assembly and command dispatch |
 | `app/src/heartbeat.c` | A7 liveness watchdog, drives LD7 |
+| `app/src/uros.c` | micro-ROS node (counter publisher) |
+| `app/src/uros_transport.c` | micro-ROS custom transport over the second rpmsg-tty channel |
 
 Memory map (`app/boards/stm32mp157c_dk2.overlay`): code in MCU SRAM1
 (128 KB), data in SRAM2 (128 KB), rpmsg buffers in SRAM3, and only the
@@ -78,6 +84,18 @@ cat /dev/ttyRPMSG0 & echo "PING 1" > /dev/ttyRPMSG0   # -> PONG 1, LD7 blinks fo
 ```
 
 Stop `dontfall-app.service` first, or it competes for the tty.
+
+micro-ROS: the first build also builds libmicroros with colcon inside
+`modules/lib/micro_ros_zephyr_module/modules/libmicroros` (it clones its
+ROS sources from the network, a few minutes). On the board:
+
+```sh
+printf '\n' > /dev/ttyRPMSG1     # Linux must write first, see uros_transport.h
+micro-ros-agent serial --dev /dev/ttyRPMSG1
+```
+
+and `ros2 topic echo /dontfall_m4/counter` anywhere on the LAN. The M4
+does not reconnect yet: after restarting the Agent, restart the M4 too.
 
 ## Patches
 
