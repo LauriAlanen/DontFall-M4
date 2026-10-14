@@ -1,12 +1,13 @@
 /*
  * OpenAMP remote side of the A7 <-> M4 link: libmetal/virtio setup on the
- * resource table, the IPCC mailbox kick, and the "rpmsg-tty" endpoint.
+ * resource table, the IPCC mailbox kick, and one "rpmsg-tty" endpoint per
+ * ipc_channel.
  *
  * Two threads:
  *  - mng: brings the rpmsg device up, then turns every mailbox interrupt
  *    into rproc_virtio_notified(), which runs the endpoint rx callback.
- *  - rx:  creates the endpoint and hands each received message to the
- *    user callback, outside the virtio notification path.
+ *  - rx:  creates the endpoints and hands each received message to its
+ *    channel's user callback, outside the virtio notification path.
  *
  * Derived from zephyr/samples/subsys/ipc/openamp_rsc_table
  * Copyright (c) 2020, STMICROELECTRONICS
@@ -55,17 +56,19 @@ static struct rpmsg_virtio_device rvdev;
 static struct fw_resource_table *rsc_table;
 static struct rpmsg_device *rpdev;
 
-static struct rpmsg_endpoint tty_ept;
-static ipc_rx_cb_t user_rx_cb;
+static struct rpmsg_endpoint epts[IPC_CH_COUNT];
+static ipc_rx_cb_t user_rx_cbs[IPC_CH_COUNT];
 
 struct rx_msg {
+	enum ipc_channel ch;
 	void *data;
 	size_t len;
 };
 
 /*
- * One slot per rpmsg buffer: a single rproc_virtio_notified() call can
- * deliver several messages before the rx thread gets to run.
+ * One slot per rpmsg buffer (shared by all endpoints): a single
+ * rproc_virtio_notified() call can deliver several messages before the rx
+ * thread gets to run.
  */
 K_MSGQ_DEFINE(rx_queue, sizeof(struct rx_msg), CONFIG_OPENAMP_RSC_TABLE_NUM_RPMSG_BUFF, 4);
 
@@ -81,7 +84,7 @@ static void platform_ipm_callback(const struct device *dev, void *context,
 static int rpmsg_recv_tty_callback(struct rpmsg_endpoint *ept, void *data,
 				   size_t len, uint32_t src, void *priv)
 {
-	struct rx_msg msg = {.data = data, .len = len};
+	struct rx_msg msg = {.ch = (enum ipc_channel)(uintptr_t)priv, .data = data, .len = len};
 
 	/* keep the buffer until the rx thread has consumed it */
 	rpmsg_hold_rx_buffer(ept, data);
@@ -194,22 +197,29 @@ static void ipc_rx_task(void *arg1, void *arg2, void *arg3)
 	/* released by ipc_mng_task once the rpmsg device exists */
 	k_sem_take(&rpdev_ready_sem, K_FOREVER);
 
-	ret = rpmsg_create_ept(&tty_ept, rpdev, "rpmsg-tty", RPMSG_ADDR_ANY, RPMSG_ADDR_ANY,
-			       rpmsg_recv_tty_callback, NULL);
-	if (ret) {
-		printk("rpmsg-tty endpoint failed: %d\n", ret);
-		return;
+	/* created (and so announced to Linux) in ipc_channel order */
+	for (int ch = 0; ch < IPC_CH_COUNT; ch++) {
+		/* the rx callback gets priv: the channel, to route the message */
+		epts[ch].priv = (void *)(uintptr_t)ch;
+		ret = rpmsg_create_ept(&epts[ch], rpdev, "rpmsg-tty", RPMSG_ADDR_ANY,
+				       RPMSG_ADDR_ANY, rpmsg_recv_tty_callback, NULL);
+		if (ret) {
+			printk("rpmsg-tty %d endpoint failed: %d\n", ch, ret);
+			return;
+		}
 	}
-	printk("rpmsg-tty ready\n");
+	printk("rpmsg-tty ready (%d channels)\n", IPC_CH_COUNT);
 
-	while (tty_ept.addr != RPMSG_ADDR_ANY) {
+	while (epts[IPC_CH_CTRL].addr != RPMSG_ADDR_ANY) {
 		k_msgq_get(&rx_queue, &msg, K_FOREVER);
 		if (msg.len) {
-			user_rx_cb(msg.data, msg.len);
+			user_rx_cbs[msg.ch](msg.data, msg.len);
 		}
-		rpmsg_release_rx_buffer(&tty_ept, msg.data);
+		rpmsg_release_rx_buffer(&epts[msg.ch], msg.data);
 	}
-	rpmsg_destroy_ept(&tty_ept);
+	for (int ch = 0; ch < IPC_CH_COUNT; ch++) {
+		rpmsg_destroy_ept(&epts[ch]);
+	}
 }
 
 static void ipc_mng_task(void *arg1, void *arg2, void *arg3)
@@ -242,12 +252,14 @@ task_end:
 	printk("OpenAMP setup failed\n");
 }
 
-int ipc_start(ipc_rx_cb_t rx_cb)
+int ipc_start(const ipc_rx_cb_t rx_cbs[IPC_CH_COUNT])
 {
-	if (!rx_cb) {
-		return -EINVAL;
+	for (int ch = 0; ch < IPC_CH_COUNT; ch++) {
+		if (!rx_cbs[ch]) {
+			return -EINVAL;
+		}
+		user_rx_cbs[ch] = rx_cbs[ch];
 	}
-	user_rx_cb = rx_cb;
 
 	k_thread_create(&thread_mng_data, thread_mng_stack, MNG_STACK_SIZE, ipc_mng_task,
 			NULL, NULL, NULL, K_PRIO_COOP(8), 0, K_NO_WAIT);
@@ -256,7 +268,10 @@ int ipc_start(ipc_rx_cb_t rx_cb)
 	return 0;
 }
 
-int ipc_send(const void *data, size_t len)
+int ipc_send(enum ipc_channel ch, const void *data, size_t len)
 {
-	return rpmsg_send(&tty_ept, data, len);
+	if (ch >= IPC_CH_COUNT) {
+		return -EINVAL;
+	}
+	return rpmsg_send(&epts[ch], data, len);
 }

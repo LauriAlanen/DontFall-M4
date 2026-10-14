@@ -25,7 +25,7 @@ static bool line_overflow;
 
 static void reply(const char *s)
 {
-	int ret = ipc_send(s, strlen(s));
+	int ret = ipc_send(IPC_CH_CTRL, s, strlen(s));
 
 	if (ret < 0) {
 		printk("protocol: send failed: %d\n", ret);

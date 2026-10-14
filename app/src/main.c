@@ -2,8 +2,8 @@
  * DontFall M4 firmware: OpenAMP remote on the STM32MP157 Cortex-M4.
  *
  * Wires the modules together:
- *  - ipc:       rpmsg-tty channel to Linux (/dev/ttyRPMSG0)
- *  - protocol:  line protocol on that channel (PING/PONG)
+ *  - ipc:       rpmsg-tty channels to Linux (/dev/ttyRPMSG0, /dev/ttyRPMSG1)
+ *  - protocol:  line protocol on the first channel (PING/PONG)
  *  - heartbeat: A7 liveness watchdog; LD7 blinks while the A7 is talking
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -15,6 +15,18 @@
 #include "heartbeat.h"
 #include "ipc.h"
 #include "protocol.h"
+
+/* IPC_CH_UROS is reserved for micro-ROS; nothing reads it yet */
+static void uros_rx_unused(const uint8_t *data, size_t len)
+{
+	ARG_UNUSED(data);
+	ARG_UNUSED(len);
+}
+
+static const ipc_rx_cb_t rx_cbs[IPC_CH_COUNT] = {
+	[IPC_CH_CTRL] = protocol_rx,
+	[IPC_CH_UROS] = uros_rx_unused,
+};
 
 int main(void)
 {
@@ -28,7 +40,7 @@ int main(void)
 		printk("LD7 not available: %d\n", ret);
 	}
 
-	ret = ipc_start(protocol_rx);
+	ret = ipc_start(rx_cbs);
 	if (ret) {
 		printk("ipc_start failed: %d\n", ret);
 	}
