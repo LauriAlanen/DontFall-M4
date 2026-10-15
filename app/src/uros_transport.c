@@ -86,3 +86,8 @@ int uros_transport_init(void)
 
 	return ret == RMW_RET_OK ? 0 : -EIO;
 }
+
+void uros_transport_reset(void)
+{
+	k_pipe_flush(&rx_pipe);
+}

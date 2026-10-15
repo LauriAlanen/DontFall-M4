@@ -26,4 +26,7 @@ void uros_transport_rx(const uint8_t *data, size_t len);
 /* Register the transport with micro-ROS. Returns 0, or a negative errno. */
 int uros_transport_init(void);
 
+/* Drop buffered rx bytes, e.g. leftovers from a lost Agent. */
+void uros_transport_reset(void);
+
 #endif /* DONTFALL_M4_UROS_TRANSPORT_H_ */
