@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Verify west.yml pins the same Zephyr commit that meta-zephyr builds in the
-# DontFall Yocto image (../../DontFall/meta-zephyr, if checked out).
+# DontFall Yocto image (../../DontFall/meta-zephyr, if checked out), and the
+# same micro-ROS sources (micro_ros.yml + micro_ros_zephyr_module) that
+# dontfall-m4.bb fetches (micro-ros-srcs.inc).
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,4 +32,17 @@ if [ "$west_rev" != "$yocto_rev" ]; then
     echo "MISMATCH: update west.yml or meta-zephyr so dev and release build the same Zephyr" >&2
     exit 1
 fi
+
+# micro-ROS: "name revision" pairs from both sides, sorted and compared.
+srcs="$repo/../../DontFall/meta-df/meta-df-common/recipes-df/dontfall-m4/micro-ros-srcs.inc"
+west_uros=$(cat "$repo/micro_ros.yml" "$repo/west.yml" | awk '
+    /- name: / {name=$3}
+    /revision:/ && name != "zephyr" {print name, $2}' | sort)
+yocto_uros=$(sed -n 's/^SRCREV_\(.*\) = "\(.*\)"/\1 \2/p' "$srcs" | sort)
+if [ "$west_uros" != "$yocto_uros" ]; then
+    echo "MISMATCH: micro-ROS pins differ between west and $srcs:" >&2
+    diff <(echo "$west_uros") <(echo "$yocto_uros") >&2 || true
+    exit 1
+fi
+echo "micro-ROS: $(echo "$west_uros" | wc -l) pins"
 echo "OK: pins match"
