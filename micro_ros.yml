@@ -1,0 +1,140 @@
+# Sources of libmicroros, imported by west.yml.
+#
+# micro_ros_zephyr_module's libmicroros.mk used to git clone these at their
+# branch heads during every clean build. They are pinned here instead (the
+# revisions verified on the board in ROS plan step 4) and our module patch
+# builds them from modules/lib/micro_ros/{dev,src}. The DontFall Yocto
+# recipe (dontfall-m4.bb) must fetch the same revisions.
+#
+# To bump: change the revisions (the comment is the branch they track), run
+# west update, then delete the build output the module keeps in its source
+# tree (modules/lib/micro_ros_zephyr_module/modules/libmicroros/:
+# micro_ros_dev/ micro_ros_src/ include/ libmicroros.a) - west build -p
+# does not.
+manifest:
+  remotes:
+    - name: ament
+      url-base: https://github.com/ament
+    - name: ros2
+      url-base: https://github.com/ros2
+    - name: micro-ROS
+      url-base: https://github.com/micro-ROS
+    - name: eProsima
+      url-base: https://github.com/eProsima
+
+  projects:
+    # ament build tools (micro_ros_dev), built for the host
+    - name: ament_cmake
+      remote: ament
+      revision: 358b03b9a78bfca74c3989d983fa928da8170721  # jazzy
+      path: modules/lib/micro_ros/dev/ament_cmake
+    - name: ament_lint
+      remote: ament
+      revision: 9121ac787058642730206a52daba614f9c86b0fb  # jazzy
+      path: modules/lib/micro_ros/dev/ament_lint
+    - name: ament_package
+      remote: ament
+      revision: ee3c5eda4fbc4df2c7a135d0ac1385e4a53fa0ee  # jazzy
+      path: modules/lib/micro_ros/dev/ament_package
+    - name: googletest
+      remote: ament
+      revision: 449327bfc17e58db5ce53955b8e250427909a1c8  # jazzy
+      path: modules/lib/micro_ros/dev/googletest
+    - name: ament_cmake_ros
+      remote: ros2
+      revision: 5b77a227b940a25be5224d78d37591c8baccd756  # jazzy
+      path: modules/lib/micro_ros/dev/ament_cmake_ros
+    - name: ament_index
+      remote: ament
+      revision: 2ccdcb8fd19a364fc793273b5793459207a440b9  # jazzy
+      path: modules/lib/micro_ros/dev/ament_index
+
+    # micro-ROS packages (micro_ros_src), cross-built into libmicroros.a
+    - name: micro-CDR
+      remote: eProsima
+      revision: ed4fd513a24a53b93d548d342cb7aa0a18716f04  # ros2
+      path: modules/lib/micro_ros/src/micro-CDR
+    - name: Micro-XRCE-DDS-Client
+      remote: eProsima
+      revision: 83f129a80770a09aac9e823896ecbf6a0eddf0fc  # ros2
+      path: modules/lib/micro_ros/src/Micro-XRCE-DDS-Client
+    - name: rcl
+      remote: micro-ROS
+      revision: 93026ef7d1a5df3591cd04c062b6623a6ea2f32e  # jazzy
+      path: modules/lib/micro_ros/src/rcl
+    - name: rclc
+      remote: ros2
+      revision: 45ef3de567588652c7f05017a91ea29921dd6862  # jazzy
+      path: modules/lib/micro_ros/src/rclc
+    - name: rcutils
+      remote: micro-ROS
+      revision: eb7baaa0a38ea9f73ae295008a88e18bd89c9500  # jazzy
+      path: modules/lib/micro_ros/src/rcutils
+    - name: micro_ros_msgs
+      remote: micro-ROS
+      revision: b1ef85201e5545d3e07b73f4628bb15836062573  # jazzy
+      path: modules/lib/micro_ros/src/micro_ros_msgs
+    - name: rmw-microxrcedds
+      remote: micro-ROS
+      revision: cbc4a1e60aeafd051a7c1636045653d5df425f98  # jazzy
+      path: modules/lib/micro_ros/src/rmw-microxrcedds
+    - name: rosidl_typesupport
+      remote: micro-ROS
+      revision: 352f208e29f33d7a5e78f4aec38ac0056d9ff23e  # jazzy
+      path: modules/lib/micro_ros/src/rosidl_typesupport
+    - name: rosidl_typesupport_microxrcedds
+      remote: micro-ROS
+      revision: 9672e11175e616bc3fb7449288d0868ab36419bf  # jazzy
+      path: modules/lib/micro_ros/src/rosidl_typesupport_microxrcedds
+    - name: rosidl
+      remote: ros2
+      revision: 85fa592b698b0f665e3120f48fac0d35e2f7d8a4  # jazzy
+      path: modules/lib/micro_ros/src/rosidl
+    - name: rosidl_dynamic_typesupport
+      remote: ros2
+      revision: cb8c54d12c678daa70410bb0626ed8626f561e45  # jazzy
+      path: modules/lib/micro_ros/src/rosidl_dynamic_typesupport
+    - name: rmw
+      remote: ros2
+      revision: 8cb94a87cf3f4049abe2d563af893517bf336930  # jazzy
+      path: modules/lib/micro_ros/src/rmw
+    - name: rcl_interfaces
+      remote: ros2
+      revision: 7aa3caf43377ea6ad615bc1040832e2c7566bfbe  # jazzy
+      path: modules/lib/micro_ros/src/rcl_interfaces
+    - name: rosidl_defaults
+      remote: ros2
+      revision: 9749b5919add7e5960cd931ec547d45f06bd0025  # jazzy
+      path: modules/lib/micro_ros/src/rosidl_defaults
+    - name: unique_identifier_msgs
+      remote: ros2
+      revision: 901599ee92c2ee949f42a5c5d821c92b3e515d69  # jazzy
+      path: modules/lib/micro_ros/src/unique_identifier_msgs
+    - name: common_interfaces
+      remote: ros2
+      revision: a941f14bb318d8d904505ed935ccbb97f24a70a4  # jazzy
+      path: modules/lib/micro_ros/src/common_interfaces
+    - name: test_interface_files
+      remote: ros2
+      revision: 1c92e082fe14f90b772d308d113e510ad2c79fb9  # jazzy
+      path: modules/lib/micro_ros/src/test_interface_files
+    - name: rmw_implementation
+      remote: ros2
+      revision: 835ff87c676cd65634edd3ad7ba88c8d8a0452e7  # jazzy
+      path: modules/lib/micro_ros/src/rmw_implementation
+    - name: rcl_logging
+      remote: ros2
+      revision: 727920c2592be6deb6983f0fe1b57cbc929cbb70  # jazzy
+      path: modules/lib/micro_ros/src/rcl_logging
+    - name: ros2_tracing
+      remote: ros2
+      revision: 615d3dc1ea9ce39784f36ab8bce3b362cd530a07  # jazzy
+      path: modules/lib/micro_ros/src/ros2_tracing
+    - name: micro_ros_utilities
+      remote: micro-ROS
+      revision: 9f35a036f5c87595c03673598be1615ded620f6d  # jazzy
+      path: modules/lib/micro_ros/src/micro_ros_utilities
+    - name: rosidl_core
+      remote: ros2
+      revision: c6eb22b0e77cf57b19e9c6ffd114a00749404215  # jazzy
+      path: modules/lib/micro_ros/src/rosidl_core

@@ -1,0 +1,150 @@
+From 40f966f2ae356b09640c5cedaca97c74eb14d8a1 Mon Sep 17 00:00:00 2001
+From: Lauri Alanen <laurialanen1@gmail.com>
+Date: Thu, 15 Oct 2026 18:47:28 +0300
+Subject: [PATCH] libmicroros: build from pinned sources instead of cloning
+ branch heads
+
+The application checks out the micro-ROS sources at fixed revisions and
+passes their location as MICROROS_REPOS_DIR. colcon builds them via
+--base-paths; the packages formerly skipped with COLCON_IGNORE are
+skipped with --packages-ignore, so the checkouts stay clean.
+---
+ modules/libmicroros/CMakeLists.txt |  8 ++++
+ modules/libmicroros/libmicroros.mk | 70 +++++++++---------------------
+ 2 files changed, 29 insertions(+), 49 deletions(-)
+
+diff --git a/modules/libmicroros/CMakeLists.txt b/modules/libmicroros/CMakeLists.txt
+index dc30f89..51478ba 100644
+--- a/modules/libmicroros/CMakeLists.txt
++++ b/modules/libmicroros/CMakeLists.txt
+@@ -4,6 +4,12 @@ if(CONFIG_MICROROS)
+ 
+ set(MICROROS_DIR ${ZEPHYR_CURRENT_MODULE_DIR})
+ 
++# Pinned micro-ROS sources (dev/ and src/), checked out by the application's
++# workspace; libmicroros.mk does not clone anything.
++if(NOT MICROROS_REPOS_DIR)
++    message(FATAL_ERROR "Set MICROROS_REPOS_DIR to the pinned micro-ROS sources")
++endif()
++
+ if(CMAKE_GENERATOR STREQUAL "Unix Makefiles")
+ set(submake "$(MAKE)")
+ else()
+@@ -48,6 +54,7 @@ externalproject_add(libmicroros_project
+             COMPONENT_PATH=${MICROROS_DIR}
+             ZEPHYR_BASE=${ZEPHYR_BASE}
+             PROJECT_BINARY_DIR=${PROJECT_BINARY_DIR}
++            MICROROS_REPOS=${MICROROS_REPOS_DIR}
+     INSTALL_COMMAND ""
+     BUILD_BYPRODUCTS ${MICROROS_DIR}/libmicroros.a
+     )
+@@ -62,6 +69,7 @@ execute_process(
+     COMMAND
+         make -f libmicroros.mk get_package_names
+             COMPONENT_PATH=${MICROROS_DIR}
++            MICROROS_REPOS=${MICROROS_REPOS_DIR}
+     WORKING_DIRECTORY
+         ${MICROROS_DIR}
+     OUTPUT_VARIABLE
+diff --git a/modules/libmicroros/libmicroros.mk b/modules/libmicroros/libmicroros.mk
+index 9d6e812..b4a11d7 100644
+--- a/modules/libmicroros/libmicroros.mk
++++ b/modules/libmicroros/libmicroros.mk
+@@ -1,6 +1,19 @@
+ UROS_DIR = $(COMPONENT_PATH)/micro_ros_src
+ DEBUG ?= 0
+ 
++# Sources are checked out by the caller at pinned revisions (nothing is
++# cloned here): $(MICROROS_REPOS)/dev holds the ament build tools,
++# $(MICROROS_REPOS)/src the micro-ROS packages. The build happens in
++# micro_ros_dev/ and micro_ros_src/; run `clean` after changing a pin.
++ifeq ($(MICROROS_REPOS),)
++$(error MICROROS_REPOS is not set)
++endif
++DEV_SRC = $(MICROROS_REPOS)/dev
++UROS_SRC = $(MICROROS_REPOS)/src
++UROS_IGNORE = test_tracetools lttngpy rosidl_typesupport_introspection_cpp \
++	rclc_examples actionlib_msgs std_srvs rcl_yaml_param_parser \
++	rcl_logging_spdlog test_msgs
++
+ ifeq ($(DEBUG), 1)
+ 	BUILD_TYPE = Debug
+ else
+@@ -24,11 +37,10 @@ clean:
+ 
+ ZEPHYR_CONF_FILE := $(PROJECT_BINARY_DIR)/.config
+ 
+-get_package_names: $(COMPONENT_PATH)/micro_ros_src/src
+-	@cd $(COMPONENT_PATH)/micro_ros_src/src; \
+-	colcon list | awk '{print $$1}' | awk -v d=";" '{s=(NR==1?s:s d)$$0}END{print s}'
++get_package_names:
++	@colcon list --base-paths $(UROS_SRC) --packages-ignore $(UROS_IGNORE) | awk '{print $$1}' | awk -v d=";" '{s=(NR==1?s:s d)$$0}END{print s}'
+ 
+-configure_colcon_meta: $(COMPONENT_PATH)/colcon.meta $(COMPONENT_PATH)/micro_ros_src/src
++configure_colcon_meta: $(COMPONENT_PATH)/colcon.meta
+ 	. $(COMPONENT_PATH)/utils.sh; \
+ 	cp $(COMPONENT_PATH)/colcon.meta $(COMPONENT_PATH)/configured_colcon.meta; \
+ 	ZEPHYR_CONF_FILE=$(ZEPHYR_CONF_FILE); \
+@@ -61,54 +73,14 @@ configure_toolchain: $(COMPONENT_PATH)/zephyr_toolchain.cmake.in
+ $(COMPONENT_PATH)/micro_ros_dev/install:
+ 	rm -rf micro_ros_dev; \
+ 	mkdir micro_ros_dev; cd micro_ros_dev; \
+-	git clone -b jazzy https://github.com/ament/ament_cmake src/ament_cmake; \
+-	git clone -b jazzy https://github.com/ament/ament_lint src/ament_lint; \
+-	git clone -b jazzy https://github.com/ament/ament_package src/ament_package; \
+-	git clone -b jazzy https://github.com/ament/googletest src/googletest; \
+-	git clone -b jazzy https://github.com/ros2/ament_cmake_ros src/ament_cmake_ros; \
+-	git clone -b jazzy https://github.com/ament/ament_index src/ament_index; \
+-	touch src/ament_cmake_ros/rmw_test_fixture/COLCON_IGNORE; \
+-	colcon build --cmake-args -DBUILD_TESTING=OFF;
+-
+-$(COMPONENT_PATH)/micro_ros_src/src:
+-	@rm -rf micro_ros_src; \
+-	mkdir micro_ros_src; cd micro_ros_src; \
+-	git clone -b ros2 https://github.com/eProsima/micro-CDR src/micro-CDR; \
+-	git clone -b ros2 https://github.com/eProsima/Micro-XRCE-DDS-Client src/Micro-XRCE-DDS-Client; \
+-	git clone -b jazzy https://github.com/micro-ROS/rcl src/rcl; \
+-	git clone -b jazzy https://github.com/ros2/rclc src/rclc; \
+-	git clone -b jazzy https://github.com/micro-ROS/rcutils src/rcutils; \
+-	git clone -b jazzy https://github.com/micro-ROS/micro_ros_msgs src/micro_ros_msgs; \
+-	git clone -b jazzy https://github.com/micro-ROS/rmw-microxrcedds src/rmw-microxrcedds; \
+-	git clone -b jazzy https://github.com/micro-ROS/rosidl_typesupport src/rosidl_typesupport; \
+-	git clone -b jazzy https://github.com/micro-ROS/rosidl_typesupport_microxrcedds src/rosidl_typesupport_microxrcedds; \
+-	git clone -b jazzy https://github.com/ros2/rosidl src/rosidl; \
+-	git clone -b jazzy https://github.com/ros2/rosidl_dynamic_typesupport src/rosidl_dynamic_typesupport; \
+-	git clone -b jazzy https://github.com/ros2/rmw src/rmw; \
+-	git clone -b jazzy https://github.com/ros2/rcl_interfaces src/rcl_interfaces; \
+-	git clone -b jazzy https://github.com/ros2/rosidl_defaults src/rosidl_defaults; \
+-	git clone -b jazzy https://github.com/ros2/unique_identifier_msgs src/unique_identifier_msgs; \
+-	git clone -b jazzy https://github.com/ros2/common_interfaces src/common_interfaces; \
+-	git clone -b jazzy https://github.com/ros2/test_interface_files src/test_interface_files; \
+-	git clone -b jazzy https://github.com/ros2/rmw_implementation src/rmw_implementation; \
+-	git clone -b jazzy https://github.com/ros2/rcl_logging src/rcl_logging; \
+-	git clone -b jazzy https://github.com/ros2/ros2_tracing src/ros2_tracing; \
+-	git clone -b jazzy https://github.com/micro-ROS/micro_ros_utilities src/micro_ros_utilities; \
+-	git clone -b jazzy https://github.com/ros2/rosidl_core src/rosidl_core; \
+-	touch src/ros2_tracing/test_tracetools/COLCON_IGNORE; \
+-	touch src/ros2_tracing/lttngpy/COLCON_IGNORE; \
+-    touch src/rosidl/rosidl_typesupport_introspection_cpp/COLCON_IGNORE; \
+-    touch src/rclc/rclc_examples/COLCON_IGNORE; \
+-    touch src/common_interfaces/actionlib_msgs/COLCON_IGNORE; \
+-	touch src/common_interfaces/std_srvs/COLCON_IGNORE; \
+-	touch src/rcl/rcl_yaml_param_parser/COLCON_IGNORE; \
+-    touch src/rcl_logging/rcl_logging_spdlog/COLCON_IGNORE; \
+-    touch src/rcl_interfaces/test_msgs/COLCON_IGNORE;
++	colcon build --base-paths $(DEV_SRC) --cmake-args -DBUILD_TESTING=OFF;
+ 
+-$(COMPONENT_PATH)/micro_ros_src/install: configure_colcon_meta configure_toolchain $(COMPONENT_PATH)/micro_ros_dev/install $(COMPONENT_PATH)/micro_ros_src/src
+-	cd $(UROS_DIR); \
++$(COMPONENT_PATH)/micro_ros_src/install: configure_colcon_meta configure_toolchain $(COMPONENT_PATH)/micro_ros_dev/install
++	mkdir -p $(UROS_DIR); cd $(UROS_DIR); \
+ 	. ../micro_ros_dev/install/local_setup.sh; \
+ 	colcon build \
++		--base-paths $(UROS_SRC) \
++		--packages-ignore $(UROS_IGNORE) \
+ 		--merge-install \
+ 		--packages-ignore-regex=.*_cpp \
+ 		--metas $(COMPONENT_PATH)/configured_colcon.meta \
+-- 
+2.43.0
+

@@ -8,10 +8,12 @@
 # micro_ros_zephyr_module is not part of meta-zephyr; it is pinned here on
 # its own (jazzy branch). It is not a Zephyr module at its root, so
 # app/CMakeLists.txt adds its modules/libmicroros dir via
-# ZEPHYR_EXTRA_MODULES.
+# ZEPHYR_EXTRA_MODULES. The sources it builds libmicroros from are pinned
+# in micro_ros.yml.
 manifest:
   self:
     path: DontFall-M4
+    import: micro_ros.yml
 
   remotes:
     - name: zephyrproject-rtos
