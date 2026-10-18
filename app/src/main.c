@@ -6,6 +6,7 @@
  *  - protocol:  line protocol on the first channel (PING/PONG)
  *  - heartbeat: A7 liveness watchdog; LD7 blinks while the A7 is talking
  *  - uros:      micro-ROS node, to the micro-ROS Agent on the second channel
+ *  - imu:       LSM6DSOX on SPI5 (bring-up: WHO_AM_I only)
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,6 +15,7 @@
 #include <zephyr/sys/printk.h>
 
 #include "heartbeat.h"
+#include "imu.h"
 #include "ipc.h"
 #include "protocol.h"
 #include "uros.h"
@@ -39,6 +41,11 @@ int main(void)
 	ret = ipc_start(rx_cbs);
 	if (ret) {
 		printk("ipc_start failed: %d\n", ret);
+	}
+
+	ret = imu_init();
+	if (ret) {
+		printk("imu_init failed: %d\n", ret);
 	}
 
 	ret = uros_start();

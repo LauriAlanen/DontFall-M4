@@ -20,4 +20,5 @@ target_sources(app PRIVATE
     src/heartbeat.c
     src/uros.c
     src/uros_transport.c
+    src/imu.c
 )

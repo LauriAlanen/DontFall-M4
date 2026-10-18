@@ -46,3 +46,20 @@
 		reg = <0x10040000 DT_SIZE_K(64)>;
 	};
 };
+
+/*
+ * IMU: Arduino Modulino Movement (ST LSM6DSOX) on SPI5, GPIO expansion
+ * header CN2 (docs/hardware.md in DontFall). CS on PF6 as a plain GPIO:
+ * the chip stays in I2C mode until CS goes low, so it must be driven.
+ * Linux leaves spi5 disabled, the M4 owns it.
+ */
+&spi5 {
+	pinctrl-0 = <&spi5_sck_pf7 &spi5_miso_pf8 &spi5_mosi_pf9>;
+	cs-gpios = <&gpiof 6 GPIO_ACTIVE_LOW>;
+
+	imu: lsm6dsox@0 {
+		compatible = "st,lsm6dso";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(1)>;
+	};
+};
