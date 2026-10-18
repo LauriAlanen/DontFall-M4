@@ -1,15 +1,16 @@
 /*
- * IMU: ST LSM6DSOX on SPI5 (DT node "imu").
+ * IMU: ST LSM6DSOX on SPI5 (DT node "imu"), through Zephyr's LSM6DSO
+ * sensor driver.
  *
- * Bring-up step 1 (DontFall docs/imu-plan.md): only reads WHO_AM_I over
- * raw SPI, to prove wiring, power and pin muxing before any driver is
- * involved.
+ * Bring-up step 2 (DontFall docs/imu-plan.md): a thread polls accel and
+ * gyro a few times a second and printks them in SI units, to check the
+ * axes and signs by hand. No consumers yet.
  */
 #ifndef DONTFALL_M4_IMU_H_
 #define DONTFALL_M4_IMU_H_
 
-/* Read WHO_AM_I and printk it. Returns 0 if it is the LSM6DSOX's ID,
- * -EIO for a wrong ID, or another negative errno.
+/* Check the sensor came up and start the polling thread. Returns 0, or
+ * -ENODEV if the driver failed to init (wrong WHO_AM_I, SPI error).
  */
 int imu_init(void);
 

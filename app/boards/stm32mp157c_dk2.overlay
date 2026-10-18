@@ -18,6 +18,8 @@
  * keeps the resource table out of RAM that the heap may claim.
  */
 
+#include <zephyr/dt-bindings/sensor/lsm6dso.h>
+
 /delete-node/ &mcusram;
 
 / {
@@ -61,5 +63,12 @@
 		compatible = "st,lsm6dso";
 		reg = <0>;
 		spi-max-frequency = <DT_FREQ_M(1)>;
+		/* Polled for now (imu-plan step 2). The driver writes these at
+		 * boot; without them the chip stays powered down (ODR off).
+		 */
+		accel-odr = <LSM6DSO_DT_ODR_104Hz>;
+		accel-range = <LSM6DSO_DT_FS_4G>;
+		gyro-odr = <LSM6DSO_DT_ODR_104Hz>;
+		gyro-range = <LSM6DSO_DT_FS_500DPS>;
 	};
 };

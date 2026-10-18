@@ -6,7 +6,7 @@
  *  - protocol:  line protocol on the first channel (PING/PONG)
  *  - heartbeat: A7 liveness watchdog; LD7 blinks while the A7 is talking
  *  - uros:      micro-ROS node, to the micro-ROS Agent on the second channel
- *  - imu:       LSM6DSOX on SPI5 (bring-up: WHO_AM_I only)
+ *  - imu:       LSM6DSOX on SPI5 (bring-up: polled accel/gyro, printk)
  *
  * SPDX-License-Identifier: Apache-2.0
  */

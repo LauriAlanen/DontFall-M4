@@ -28,6 +28,7 @@ manifest:
       import:
         name-allowlist:
           - cmsis
+          - hal_st
           - hal_stm32
           - libmetal
           - open-amp
