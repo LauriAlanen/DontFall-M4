@@ -1,0 +1,26 @@
+diff --git a/drivers/sensor/st/lsm6dso/lsm6dso_trigger.c b/drivers/sensor/st/lsm6dso/lsm6dso_trigger.c
+index 8f8bc527..cf4f8c04 100644
+--- a/drivers/sensor/st/lsm6dso/lsm6dso_trigger.c
++++ b/drivers/sensor/st/lsm6dso/lsm6dso_trigger.c
+@@ -182,11 +182,18 @@ static void lsm6dso_handle_interrupt(const struct device *dev)
+ 			return;
+ 		}
+ 
+-		if ((status.xlda == 0) && (status.gda == 0)
++		/*
++		 * Only a handler reads the data and so clears its ready flag.
++		 * Loop only on flags that have one: an interrupt that arrives
++		 * before a trigger is set (e.g. pending from before a reset)
++		 * would otherwise spin here forever.
++		 */
++		if (!(status.xlda && lsm6dso->handler_drdy_acc) &&
++		    !(status.gda && lsm6dso->handler_drdy_gyr)
+ #if defined(CONFIG_LSM6DSO_ENABLE_TEMP)
+-					&& (status.tda == 0)
++		    && !(status.tda && lsm6dso->handler_drdy_temp)
+ #endif
+-					) {
++		    ) {
+ 			break;
+ 		}
+ 
