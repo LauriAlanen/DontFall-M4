@@ -62,13 +62,22 @@
 	imu: lsm6dsox@0 {
 		compatible = "st,lsm6dso";
 		reg = <0>;
-		spi-max-frequency = <DT_FREQ_M(1)>;
-		/* Polled for now (imu-plan step 2). The driver writes these at
-		 * boot; without them the chip stays powered down (ODR off).
+		/* 64 MHz kernel clock / 8 = 8 MHz (chip max 10 MHz) */
+		spi-max-frequency = <DT_FREQ_M(10)>;
+		/* The driver writes these at boot; without them the chip stays
+		 * powered down (ODR off).
 		 */
-		accel-odr = <LSM6DSO_DT_ODR_104Hz>;
+		accel-odr = <LSM6DSO_DT_ODR_833Hz>;
 		accel-range = <LSM6DSO_DT_FS_4G>;
-		gyro-odr = <LSM6DSO_DT_ODR_104Hz>;
+		gyro-odr = <LSM6DSO_DT_ODR_833Hz>;
 		gyro-range = <LSM6DSO_DT_FS_500DPS>;
+		/* Data ready on INT1 (PF3, EXTI3). Pulsed, not latched: the
+		 * driver masks the GPIO interrupt while it reads, and a latched
+		 * line that goes high in that window never makes another edge.
+		 * Pulsed only loses that one sample.
+		 */
+		irq-gpios = <&gpiof 3 GPIO_ACTIVE_HIGH>;
+		int-pin = <1>;
+		drdy-pulsed;
 	};
 };

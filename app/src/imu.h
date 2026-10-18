@@ -2,15 +2,17 @@
  * IMU: ST LSM6DSOX on SPI5 (DT node "imu"), through Zephyr's LSM6DSO
  * sensor driver.
  *
- * Bring-up step 2 (DontFall docs/imu-plan.md): a thread polls accel and
- * gyro a few times a second and printks them in SI units, to check the
- * axes and signs by hand. No consumers yet.
+ * Bring-up step 3 (DontFall docs/imu-plan.md): the chip's data-ready
+ * interrupt (INT1) clocks the sampling at the ODR. Each sample is fetched
+ * and timestamped; once a second a summary of the rate and the gaps
+ * between samples is printked. No consumers yet.
  */
 #ifndef DONTFALL_M4_IMU_H_
 #define DONTFALL_M4_IMU_H_
 
-/* Check the sensor came up and start the polling thread. Returns 0, or
- * -ENODEV if the driver failed to init (wrong WHO_AM_I, SPI error).
+/* Check the sensor came up, start sampling and the summary thread.
+ * Returns 0, -ENODEV if the driver failed to init (wrong WHO_AM_I, SPI
+ * error), or the error from setting the data-ready trigger.
  */
 int imu_init(void);
 
