@@ -17,18 +17,23 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 #include <rmw_microros/rmw_microros.h>
-#include <std_msgs/msg/int32.h>
+#include <rmw_microros/time_sync.h>
+#include <sensor_msgs/msg/imu.h>
 
+#include "imu.h"
 #include "uros_transport.h"
 
 #define UROS_STACK_SIZE   16384
 #define UROS_PRIORITY     K_PRIO_PREEMPT(5)
-#define PUBLISH_PERIOD_MS 1000
+/* 50 Hz: telemetry for the PC, the IMU itself samples at ~850 Hz */
+#define PUBLISH_PERIOD_MS 20
 #define AGENT_PING_MS     100
 /* how often to look for the Agent while it's away */
 #define AGENT_SEARCH_MS   500
 /* how often to check a connected Agent is still there */
 #define AGENT_CHECK_MS    1000
+/* time to wait for the Agent's clock when syncing the session */
+#define TIME_SYNC_MS      1000
 
 K_THREAD_STACK_DEFINE(uros_stack, UROS_STACK_SIZE);
 static struct k_thread uros_thread;
@@ -39,22 +44,52 @@ static rcl_node_t node;
 static rcl_publisher_t publisher;
 static rcl_timer_t timer;
 static rclc_executor_t executor;
-static std_msgs__msg__Int32 msg;
+static sensor_msgs__msg__Imu msg;
+static char frame_id[] = "imu_link";
+
+/* Fields that never change: set once, the timer only fills in the data. */
+static void imu_msg_init(void)
+{
+	memset(&msg, 0, sizeof(msg));
+	msg.header.frame_id.data = frame_id;
+	msg.header.frame_id.size = strlen(frame_id);
+	msg.header.frame_id.capacity = sizeof(frame_id);
+	/* REP 145: no orientation estimate (yet). The other covariances stay
+	 * all zero = unknown.
+	 */
+	msg.orientation_covariance[0] = -1.0;
+}
 
 static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 {
+	struct imu_sample s;
+
 	ARG_UNUSED(last_call_time);
 
-	if (!timer) {
+	if (!timer || !imu_latest(&s)) {
 		return;
 	}
+
+	/* Agent's clock (synced in create_entities), so PC tools see real
+	 * times. Publish time, not sample time: at most one sample (~1.2 ms)
+	 * apart.
+	 */
+	int64_t now = rmw_uros_epoch_nanos();
+
+	msg.header.stamp.sec = (int32_t)(now / 1000000000);
+	msg.header.stamp.nanosec = (uint32_t)(now % 1000000000);
+	msg.angular_velocity.x = s.gyro[0];
+	msg.angular_velocity.y = s.gyro[1];
+	msg.angular_velocity.z = s.gyro[2];
+	msg.linear_acceleration.x = s.accel[0];
+	msg.linear_acceleration.y = s.accel[1];
+	msg.linear_acceleration.z = s.accel[2];
 
 	rcl_ret_t rc = rcl_publish(&publisher, &msg, NULL);
 
 	if (rc != RCL_RET_OK) {
 		printk("uros: publish failed: %d\n", (int)rc);
 	}
-	msg.data++;
 }
 
 /* print the failing call and bail out of create_entities() */
@@ -72,9 +107,16 @@ static bool create_entities(void)
 {
 	UROS_CHECK(rclc_support_init(&support, 0, NULL, &allocator));
 	UROS_CHECK(rclc_node_init_default(&node, "dontfall_m4", "", &support));
-	UROS_CHECK(rclc_publisher_init_default(&publisher, &node,
-					       ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-					       "~/counter"));
+	/* best effort, like ROS's sensor data QoS: a lost sample doesn't
+	 * matter, and nothing should wait for acks
+	 */
+	UROS_CHECK(rclc_publisher_init_best_effort(&publisher, &node,
+						   ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
+						   "~/imu"));
+	/* not fatal: without it stamps are M4 uptime instead of wall time */
+	if (rmw_uros_sync_session(TIME_SYNC_MS) != RMW_RET_OK) {
+		printk("uros: time sync with the Agent failed\n");
+	}
 	UROS_CHECK(rclc_timer_init_default2(&timer, &support, RCL_MS_TO_NS(PUBLISH_PERIOD_MS),
 					    timer_callback, true));
 	UROS_CHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
@@ -130,6 +172,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 	timer = rcl_get_zero_initialized_timer();
 	publisher = rcl_get_zero_initialized_publisher();
 	node = rcl_get_zero_initialized_node();
+	imu_msg_init();
 
 	if (uros_transport_init()) {
 		printk("uros: transport init failed\n");
@@ -153,7 +196,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 			k_sleep(K_MSEC(AGENT_SEARCH_MS));
 			continue;
 		}
-		printk("uros: publishing /dontfall_m4/counter\n");
+		printk("uros: publishing /dontfall_m4/imu\n");
 
 		int64_t next_check = k_uptime_get() + AGENT_CHECK_MS;
 

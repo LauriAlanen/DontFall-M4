@@ -54,6 +54,7 @@ static struct k_spinlock lock;
 static struct imu_stats stats; /* guarded by lock */
 static struct sensor_value accel[3]; /* m/s^2, latest sample, guarded by lock */
 static struct sensor_value gyro[3];  /* rad/s, latest sample, guarded by lock */
+static bool have_sample;              /* guarded by lock */
 static uint32_t last_cycle;  /* only touched by on_drdy */
 static bool have_last;
 
@@ -95,6 +96,7 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 		} else {
 			memcpy(accel, a, sizeof(a));
 			memcpy(gyro, g, sizeof(g));
+			have_sample = true;
 		}
 	}
 	last_cycle = now;
@@ -158,6 +160,27 @@ static void imu_task(void *p1, void *p2, void *p3)
 		print_milli("z", &g[2]);
 		printk("\n");
 	}
+}
+
+bool imu_latest(struct imu_sample *out)
+{
+	struct sensor_value a[3], g[3];
+	bool ok;
+
+	K_SPINLOCK(&lock) {
+		ok = have_sample;
+		memcpy(a, accel, sizeof(a));
+		memcpy(g, gyro, sizeof(g));
+	}
+	if (!ok) {
+		return false;
+	}
+	/* convert outside the lock: the sampling thread waits on it */
+	for (int i = 0; i < 3; i++) {
+		out->accel[i] = sensor_value_to_double(&a[i]);
+		out->gyro[i] = sensor_value_to_double(&g[i]);
+	}
+	return true;
 }
 
 int imu_init(void)
