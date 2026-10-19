@@ -43,6 +43,10 @@ RUN cd /opt \
 ENV ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk-${ZEPHYR_SDK_VERSION} \
     ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
+# twister (scripts/test.sh) needs these on top of requirements-base. Not
+# the whole requirements-run-test.txt: that pulls in pyocd and python-can.
+RUN pip3 install --no-cache-dir tabulate==0.9.0 natsort==8.4.0 colorama==0.4.6 ply==3.11
+
 # Same UID/GID as the host user so build output in the bind-mounted
 # workspace keeps the right ownership.
 RUN getent group "$GID" >/dev/null || groupadd -g "$GID" "$USERNAME"; \

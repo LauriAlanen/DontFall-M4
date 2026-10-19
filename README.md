@@ -76,6 +76,17 @@ deploy), restarts the M4 via `/sys/class/remoteproc/remoteproc0` and with
 `--log` prints the M4's `printk` output (RAM console exposed as remoteproc
 `trace0`). Extra `build.sh` args go to `west build` (`-p always` = pristine).
 
+Host tests (ztest suites in `tests/`, run by twister as Linux programs on
+`native_sim/native/64`; results in `build/twister/`):
+
+```sh
+scripts/test.sh
+```
+
+Only critical logic has tests (e.g. `tests/tilt` for the tilt filter in
+`app/src/tilt.c`). Code under test must not depend on Zephyr's drivers,
+so the same source builds into the firmware and the test.
+
 Talk to it from the board:
 
 ```sh
