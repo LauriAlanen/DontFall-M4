@@ -21,4 +21,5 @@ target_sources(app PRIVATE
     src/uros.c
     src/uros_transport.c
     src/imu.c
+    src/tilt.c
 )

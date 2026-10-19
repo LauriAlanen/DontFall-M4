@@ -81,3 +81,15 @@ void tilt_update(struct tilt *t, const float accel[3], const float gyro[3], floa
 	t->roll = wrap(t->roll + k * wrap(roll_acc - t->roll));
 	t->pitch = wrap(t->pitch + k * wrap(pitch_acc - t->pitch));
 }
+
+void tilt_quaternion(float roll, float pitch, float q[4])
+{
+	/* ZYX Euler to quaternion with yaw = 0 */
+	float sr = sinf(roll / 2), cr = cosf(roll / 2);
+	float sp = sinf(pitch / 2), cp = cosf(pitch / 2);
+
+	q[0] = sr * cp;
+	q[1] = cr * sp;
+	q[2] = -sr * sp;
+	q[3] = cr * cp;
+}

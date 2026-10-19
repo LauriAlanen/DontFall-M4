@@ -40,4 +40,10 @@ void tilt_init(struct tilt *t, float tau);
  */
 void tilt_update(struct tilt *t, const float accel[3], const float gyro[3], float dt);
 
+/* Unit quaternion (x, y, z, w) of roll and pitch with yaw 0, as ROS
+ * (geometry_msgs/Quaternion) wants it: rotates body vectors into the
+ * level frame.
+ */
+void tilt_quaternion(float roll, float pitch, float q[4]);
+
 #endif /* DONTFALL_M4_TILT_H_ */

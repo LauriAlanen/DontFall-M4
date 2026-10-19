@@ -27,6 +27,12 @@
 #define UROS_PRIORITY     K_PRIO_PREEMPT(5)
 /* 50 Hz: telemetry for the PC, the IMU itself samples at ~850 Hz */
 #define PUBLISH_PERIOD_MS 20
+/* Orientation variance, rad^2. Roll and pitch: (1 deg)^2, the accuracy
+ * aimed for at rest (imu-plan.md step 6); worse while accelerating.
+ * Yaw: not estimated (always 0), so "anything".
+ */
+#define TILT_VARIANCE     3e-4
+#define YAW_VARIANCE      1e6
 #define AGENT_PING_MS     100
 /* how often to look for the Agent while it's away */
 #define AGENT_SEARCH_MS   500
@@ -54,10 +60,12 @@ static void imu_msg_init(void)
 	msg.header.frame_id.data = frame_id;
 	msg.header.frame_id.size = strlen(frame_id);
 	msg.header.frame_id.capacity = sizeof(frame_id);
-	/* REP 145: no orientation estimate (yet). The other covariances stay
-	 * all zero = unknown.
+	/* row-major 3x3 about x, y, z; the other covariances stay all zero =
+	 * unknown (REP 145)
 	 */
-	msg.orientation_covariance[0] = -1.0;
+	msg.orientation_covariance[0] = TILT_VARIANCE;
+	msg.orientation_covariance[4] = TILT_VARIANCE;
+	msg.orientation_covariance[8] = YAW_VARIANCE;
 }
 
 static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
@@ -78,6 +86,10 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 
 	msg.header.stamp.sec = (int32_t)(now / 1000000000);
 	msg.header.stamp.nanosec = (uint32_t)(now % 1000000000);
+	msg.orientation.x = s.orientation[0];
+	msg.orientation.y = s.orientation[1];
+	msg.orientation.z = s.orientation[2];
+	msg.orientation.w = s.orientation[3];
 	msg.angular_velocity.x = s.gyro[0];
 	msg.angular_velocity.y = s.gyro[1];
 	msg.angular_velocity.z = s.gyro[2];

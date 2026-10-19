@@ -141,4 +141,39 @@ ZTEST(tilt, test_roll_wraps_at_180)
 	zassert_within(t.roll, -179 * DEG, 0.1f * DEG);
 }
 
+/* Rotate v by unit quaternion q (x, y, z, w): v + 2w(u x v) + 2u x (u x v). */
+static void rotate(const float q[4], const float v[3], float out[3])
+{
+	const float *u = q;
+	float t[3] = {
+		2 * (u[1] * v[2] - u[2] * v[1]),
+		2 * (u[2] * v[0] - u[0] * v[2]),
+		2 * (u[0] * v[1] - u[1] * v[0]),
+	};
+
+	out[0] = v[0] + q[3] * t[0] + (u[1] * t[2] - u[2] * t[1]);
+	out[1] = v[1] + q[3] * t[1] + (u[2] * t[0] - u[0] * t[2]);
+	out[2] = v[2] + q[3] * t[2] + (u[0] * t[1] - u[1] * t[0]);
+}
+
+/* The published orientation must agree with the angles: rotating what
+ * the accelerometer reads (body axes) by it gives gravity straight up.
+ */
+ZTEST(tilt, test_quaternion_matches_angles)
+{
+	const float att[][2] = {{0, 0}, {30 * DEG, 0}, {0, -40 * DEG}, {-20 * DEG, 15 * DEG}};
+
+	for (size_t i = 0; i < ARRAY_SIZE(att); i++) {
+		float q[4], a[3], up[3];
+
+		tilt_quaternion(att[i][0], att[i][1], q);
+		zassert_within(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3], 1, 1e-5f);
+		gravity(att[i][0], att[i][1], a);
+		rotate(q, a, up);
+		zassert_within(up[0], 0, 1e-4f, "case %d", (int)i);
+		zassert_within(up[1], 0, 1e-4f, "case %d", (int)i);
+		zassert_within(up[2], G, 1e-4f, "case %d", (int)i);
+	}
+}
+
 ZTEST_SUITE(tilt, NULL, NULL, NULL, NULL, NULL);

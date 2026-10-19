@@ -23,10 +23,15 @@
  * Samples are kept as integer micro-units (um/s^2, urad/s), so the bias
  * subtraction at the sensor rate is integer maths.
  *
+ * Tilt (step 6b): every calibrated sample also goes through the tilt
+ * filter (tilt.c) in the same thread, with the measured time since the
+ * previous sample: the chip's ODR is ~2% off nominal.
+ *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "imu.h"
+#include "tilt.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -59,6 +64,12 @@
  */
 #define CAL_MAX_BIAS   100000 /* urad/s, ~5.7 dps */
 
+/* Tilt filter time constant: a common start for balancing robots, tune
+ * on the robot (imu-plan.md step 6).
+ */
+#define TILT_TAU       0.5f /* s */
+#define RAD_TO_UDEG    (180e6f / 3.14159265f)
+
 K_THREAD_STACK_DEFINE(imu_stack, IMU_STACK_SIZE);
 static struct k_thread imu_thread;
 
@@ -90,6 +101,7 @@ static struct imu_stats stats; /* guarded by lock */
 static struct imu_cal cal;     /* guarded by lock */
 static int32_t accel[3]; /* um/s^2, latest sample, guarded by lock */
 static int32_t gyro[3];  /* urad/s, latest sample minus bias, guarded by lock */
+static float roll, pitch; /* rad, latest tilt estimate, guarded by lock */
 static bool have_sample; /* guarded by lock */
 
 /* only touched by on_drdy */
@@ -101,6 +113,7 @@ static uint32_t settle_n;
 static uint32_t cal_n;
 static int64_t cal_sum[3];
 static int32_t cal_min[3], cal_max[3];
+static struct tilt tilt;
 
 static void stats_reset(struct imu_stats *s)
 {
@@ -172,9 +185,16 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 			g[i] = (int32_t)sensor_value_to_micro(&gv[i]);
 		}
 		if (calibrated) {
+			float af[3], gf[3];
+
 			for (int i = 0; i < 3; i++) {
 				g[i] -= bias[i];
+				af[i] = a[i] * 1e-6f;
+				gf[i] = g[i] * 1e-6f;
 			}
+			/* the first update ignores dt, so no special case for it */
+			tilt_update(&tilt, af, gf,
+				    (float)(now - last_cycle) / sys_clock_hw_cycles_per_sec());
 		} else {
 			cal_add(g);
 		}
@@ -196,6 +216,8 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 		} else if (calibrated) {
 			memcpy(accel, a, sizeof(a));
 			memcpy(gyro, g, sizeof(g));
+			roll = tilt.roll;
+			pitch = tilt.pitch;
 			have_sample = true;
 		}
 	}
@@ -251,6 +273,7 @@ static void imu_task(void *p1, void *p2, void *p3)
 	struct imu_cal c;
 	uint32_t cal_printed = 0;
 	int32_t a[3], g[3];
+	float r, p;
 	bool ok;
 
 	ARG_UNUSED(p1);
@@ -267,6 +290,8 @@ static void imu_task(void *p1, void *p2, void *p3)
 			ok = have_sample;
 			memcpy(a, accel, sizeof(a));
 			memcpy(g, gyro, sizeof(g));
+			r = roll;
+			p = pitch;
 		}
 
 		print_cal(&c, &cal_printed);
@@ -282,6 +307,9 @@ static void imu_task(void *p1, void *p2, void *p3)
 		if (ok) {
 			print_xyz("imu: a[m/s2]", a);
 			print_xyz("  g[rad/s]", g);
+			printk("\nimu: tilt [deg]");
+			print_micro("roll", (int32_t)(r * RAD_TO_UDEG));
+			print_micro("pitch", (int32_t)(p * RAD_TO_UDEG));
 			printk("\n");
 		}
 	}
@@ -290,12 +318,15 @@ static void imu_task(void *p1, void *p2, void *p3)
 bool imu_latest(struct imu_sample *out)
 {
 	int32_t a[3], g[3];
+	float r, p, q[4];
 	bool ok;
 
 	K_SPINLOCK(&lock) {
 		ok = have_sample;
 		memcpy(a, accel, sizeof(a));
 		memcpy(g, gyro, sizeof(g));
+		r = roll;
+		p = pitch;
 	}
 	if (!ok) {
 		return false;
@@ -304,6 +335,10 @@ bool imu_latest(struct imu_sample *out)
 	for (int i = 0; i < 3; i++) {
 		out->accel[i] = a[i] * 1e-6;
 		out->gyro[i] = g[i] * 1e-6;
+	}
+	tilt_quaternion(r, p, q);
+	for (int i = 0; i < 4; i++) {
+		out->orientation[i] = q[i];
 	}
 	return true;
 }
@@ -318,6 +353,7 @@ int imu_init(void)
 	}
 
 	stats_reset(&stats);
+	tilt_init(&tilt, TILT_TAU);
 	ret = sensor_trigger_set(imu, &drdy, on_drdy);
 	if (ret) {
 		printk("imu: data-ready trigger failed: %d\n", ret);

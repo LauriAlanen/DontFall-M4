@@ -11,6 +11,9 @@
  * Bring-up step 5: the gyro bias is measured at startup while the module
  * is still and subtracted from every sample. No samples are handed out
  * until that has worked.
+ *
+ * Step 6: every sample also runs the tilt filter (tilt.c); its roll and
+ * pitch come with the sample as an orientation quaternion.
  */
 #ifndef DONTFALL_M4_IMU_H_
 #define DONTFALL_M4_IMU_H_
@@ -20,6 +23,10 @@
 struct imu_sample {
 	double accel[3]; /* m/s^2, sensor axes */
 	double gyro[3];  /* rad/s, sensor axes, bias removed */
+	/* tilt filter (tilt.h), body axes: unit quaternion (x, y, z, w) of
+	 * roll and pitch, yaw 0
+	 */
+	double orientation[4];
 };
 
 /* Check the sensor came up, start sampling and the summary thread.
