@@ -1,0 +1,7 @@
+# Host only: the checks are plain C, native_sim runs them as a Linux program.
+# native_sim/native/64 because the 32-bit native_sim needs gcc multilib.
+tests:
+  dontfall.imu_health:
+    platform_allow: native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
