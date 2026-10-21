@@ -84,7 +84,7 @@
 #define CAL_MAX_BIAS   100000 /* urad/s, ~5.7 dps */
 
 /* Tilt filter time constant: a common start for balancing robots, tune
- * on the robot (imu-plan.md step 6).
+ * on the robot (docs/archive/imu-plan.md step 6).
  */
 #define TILT_TAU       0.5f /* s */
 #define RAD_TO_UDEG    (180e6f / 3.14159265f)

@@ -6,7 +6,7 @@
  * the caller serialises the calls (imu.c holds its lock). Built into the
  * firmware from step 7b.
  *
- * Faults (DontFall docs/imu-plan.md step 7):
+ * Faults (DontFall docs/archive/imu-plan.md step 7):
  *  - no data:   no good sample for IMU_HEALTH_TIMEOUT_US (INT1 lost, chip
  *               powered down, the driver drops samples whose status reads
  *               0 because MISO is stuck low)

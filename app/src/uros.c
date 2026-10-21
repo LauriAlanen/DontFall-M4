@@ -28,7 +28,8 @@
 /* 50 Hz: telemetry for the PC, the IMU itself samples at ~850 Hz */
 #define PUBLISH_PERIOD_MS 20
 /* Orientation variance, rad^2. Roll and pitch: (1 deg)^2, the accuracy
- * aimed for at rest (imu-plan.md step 6); worse while accelerating.
+ * aimed for at rest (docs/archive/imu-plan.md step 6); worse while
+ * accelerating.
  * Yaw: not estimated (always 0), so "anything".
  */
 #define TILT_VARIANCE     3e-4

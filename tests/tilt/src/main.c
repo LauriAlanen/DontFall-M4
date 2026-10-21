@@ -15,7 +15,7 @@
 
 #define G    9.80665f
 #define TAU  0.5f
-#define DT   (1.0f / 850.0f) /* measured ODR, imu-plan.md step 3 */
+#define DT   (1.0f / 850.0f) /* measured ODR, docs/archive/imu-plan.md step 3 */
 #define DEG  (3.14159265f / 180.0f)
 
 /* What the accelerometer reads at rest at this attitude (see tilt.c). */
