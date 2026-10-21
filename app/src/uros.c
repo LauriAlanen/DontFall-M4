@@ -74,7 +74,7 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 
 	ARG_UNUSED(last_call_time);
 
-	if (!timer || !imu_latest(&s)) {
+	if (!timer || imu_latest(&s) != IMU_OK) {
 		return;
 	}
 

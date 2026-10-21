@@ -38,6 +38,26 @@ void imu_health_sample(struct imu_health *h, uint32_t now_us, bool read_ok,
 {
 	int32_t v[6];
 	bool saturated = false;
+	/* unsigned differences: right across a wrap of the clock */
+	uint32_t gap = now_us - h->last_us;
+	bool fast = h->have_last && gap < IMU_HEALTH_MIN_GAP_US;
+
+	/* Since the last fetch of any kind, not the last good one: a run of
+	 * bad samples keeps its own reason.
+	 */
+	if (h->have_last && gap > IMU_HEALTH_TIMEOUT_US) {
+		set_fault(h, IMU_FAULT_NO_DATA);
+	}
+	h->have_last = true;
+	h->last_us = now_us;
+	h->fast_n = fast ? h->fast_n + 1 : 0;
+	if (h->fast_n >= IMU_HEALTH_FAST) {
+		set_fault(h, IMU_FAULT_RATE);
+	}
+	if (fast) {
+		h->good_n = 0;
+		return;
+	}
 
 	if (!read_ok) {
 		h->good_n = 0;
@@ -58,15 +78,12 @@ void imu_health_sample(struct imu_health *h, uint32_t now_us, bool read_ok,
 	h->same_n = memcmp(v, h->prev, sizeof(v)) == 0 ? h->same_n + 1 : 0;
 	memcpy(h->prev, v, sizeof(v));
 
-	/* unsigned difference: right across a wrap of the clock */
-	if (h->have_good && now_us - h->last_good_us > IMU_HEALTH_TIMEOUT_US) {
-		set_fault(h, IMU_FAULT_NO_DATA);
-	}
-	if (h->saturated_n >= IMU_HEALTH_SATURATED) {
-		set_fault(h, IMU_FAULT_RANGE);
-	}
 	if (h->same_n >= IMU_HEALTH_STUCK) {
 		set_fault(h, IMU_FAULT_STUCK);
+	}
+	/* last: a sensor pinned at full scale also repeats itself */
+	if (h->saturated_n >= IMU_HEALTH_SATURATED) {
+		set_fault(h, IMU_FAULT_RANGE);
 	}
 	if (h->saturated_n || h->same_n >= IMU_HEALTH_STUCK) {
 		h->good_n = 0;
@@ -119,6 +136,8 @@ const char *imu_fault_str(enum imu_fault f)
 		return "range";
 	case IMU_FAULT_WHO_AM_I:
 		return "who_am_i";
+	case IMU_FAULT_RATE:
+		return "rate";
 	}
 	return "?";
 }

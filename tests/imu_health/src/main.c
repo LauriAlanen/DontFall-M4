@@ -147,7 +147,11 @@ ZTEST(imu_health, test_range)
 	zassert_equal(check(), IMU_OK);
 	same(IMU_HEALTH_SATURATED, a, spin);
 	zassert_equal(check(), IMU_FAULT_RANGE, "gyro saturated");
-	good(IMU_HEALTH_RECOVER);
+	/* a long run keeps its reason, also on the first good sample after */
+	same(100, a, spin);
+	good(1);
+	zassert_equal(check(), IMU_FAULT_RANGE);
+	good(IMU_HEALTH_RECOVER - 1);
 	zassert_equal(check(), IMU_OK);
 	same(IMU_HEALTH_SATURATED, hit, g);
 	zassert_equal(check(), IMU_FAULT_RANGE, "accel saturated");
@@ -169,6 +173,33 @@ ZTEST(imu_health, test_who_am_i)
 	good(IMU_HEALTH_RECOVER - 1);
 	zassert_equal(check(), IMU_FAULT_WHO_AM_I);
 	good(1);
+	zassert_equal(check(), IMU_OK);
+}
+
+/* Wire off: the driver loops on data ready and reads garbage every
+ * ~90 us. A couple of close samples (a late thread) are tolerated.
+ */
+ZTEST(imu_health, test_rate)
+{
+	int32_t a[3], g[3];
+
+	good(IMU_HEALTH_RECOVER);
+	for (int i = 0; i < IMU_HEALTH_FAST - 1; i++) {
+		now += 90;
+		live(a, g);
+		imu_health_sample(&h, now, true, a, g);
+	}
+	good(1);
+	zassert_equal(check(), IMU_OK);
+	for (int i = 0; i < 1000; i++) {
+		now += 90;
+		live(a, g);
+		imu_health_sample(&h, now, true, a, g);
+		if (i >= IMU_HEALTH_FAST - 1) {
+			zassert_equal(check(), IMU_FAULT_RATE, "sample %d", i);
+		}
+	}
+	good(IMU_HEALTH_RECOVER);
 	zassert_equal(check(), IMU_OK);
 }
 

@@ -3,7 +3,8 @@
  *
  * Plain C with no Zephyr dependencies, so the same file is built into the
  * firmware and into the host tests (tests/imu_health). Not thread safe:
- * the caller serialises the calls (imu.c holds its lock).
+ * the caller serialises the calls (imu.c holds its lock). Built into the
+ * firmware from step 7b.
  *
  * Faults (DontFall docs/imu-plan.md step 7):
  *  - no data:   no good sample for IMU_HEALTH_TIMEOUT_US (INT1 lost, chip
@@ -16,6 +17,12 @@
  *  - range:     a reading at full scale several samples in a row: the
  *               real value is beyond what the sensor measures
  *  - who_am_i:  the periodic re-check read a wrong chip id
+ *  - rate:      samples much closer together than the ODR, several in a
+ *               row. A live sensor can't; seen with the 3.3 V wire off
+ *               (the chip half powered through its I/O pins): the
+ *               driver's status read finds data ready every time and it
+ *               reads garbage at 15-40 kHz, garbage that changes enough
+ *               to pass as live.
  *
  * A fault latches: it clears only after IMU_HEALTH_RECOVER good samples
  * in a row (and, for who_am_i, a good re-check first), so a flapping wire
@@ -37,6 +44,9 @@
 #define IMU_HEALTH_SATURATED  3
 /* ~100 ms */
 #define IMU_HEALTH_RECOVER    85
+/* under half the ~1176 us period */
+#define IMU_HEALTH_MIN_GAP_US 500
+#define IMU_HEALTH_FAST       3
 
 enum imu_fault {
 	IMU_OK = 0,
@@ -45,6 +55,7 @@ enum imu_fault {
 	IMU_FAULT_STUCK,
 	IMU_FAULT_RANGE,
 	IMU_FAULT_WHO_AM_I,
+	IMU_FAULT_RATE,
 };
 
 struct imu_health {
@@ -57,11 +68,14 @@ struct imu_health {
 	enum imu_fault fault; /* latched, IMU_OK when none */
 	bool who_am_i_bad;
 	bool have_good;
+	bool have_last;
 	uint32_t last_good_us;
+	uint32_t last_us; /* any fetch, good or not */
 	uint32_t good_n; /* good samples in a row since the fault */
 	uint32_t read_errors;
 	uint32_t same_n;
 	uint32_t saturated_n;
+	uint32_t fast_n;
 	int32_t prev[6];
 };
 

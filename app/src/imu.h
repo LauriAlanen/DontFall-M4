@@ -14,11 +14,14 @@
  *
  * Step 6: every sample also runs the tilt filter (tilt.c); its roll and
  * pitch come with the sample as an orientation quaternion.
+ *
+ * Step 7: every sample goes through the fault checks (imu_health.h);
+ * imu_latest() hands out nothing while there is a fault.
  */
 #ifndef DONTFALL_M4_IMU_H_
 #define DONTFALL_M4_IMU_H_
 
-#include <stdbool.h>
+#include "imu_health.h"
 
 struct imu_sample {
 	double accel[3]; /* m/s^2, sensor axes */
@@ -36,9 +39,10 @@ struct imu_sample {
 int imu_init(void);
 
 /* Copy the newest sample to *out. Any thread; never blocks on the sensor.
- * Returns false if there is no sample yet (also while the gyro is still
- * being calibrated).
+ * Returns IMU_OK, or the fault and leaves *out alone: then the tilt can't
+ * be trusted (the balance controller disarms). IMU_FAULT_NO_DATA also
+ * while the gyro is still being calibrated.
  */
-bool imu_latest(struct imu_sample *out);
+enum imu_fault imu_latest(struct imu_sample *out);
 
 #endif /* DONTFALL_M4_IMU_H_ */

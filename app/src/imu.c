@@ -27,10 +27,19 @@
  * filter (tilt.c) in the same thread, with the measured time since the
  * previous sample: the chip's ODR is ~2% off nominal.
  *
+ * Health (step 7b): every fetch also goes through the fault checks
+ * (imu_health.c), and the summary thread re-reads WHO_AM_I once a second
+ * with a raw SPI read (the SPI driver serialises it with the sensor
+ * driver's transfers). While there is a fault, samples are not handed
+ * out, the gyro calibration doesn't use them and the tilt filter starts
+ * over, so it takes the accelerometer's angles once the IMU is healthy
+ * again instead of integrating garbage.
+ *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "imu.h"
+#include "imu_health.h"
 #include "tilt.h"
 
 #include <errno.h>
@@ -38,6 +47,7 @@
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/spi.h>
 #include <zephyr/kernel.h>
 #include <zephyr/spinlock.h>
 #include <zephyr/sys/printk.h>
@@ -70,10 +80,25 @@
 #define TILT_TAU       0.5f /* s */
 #define RAD_TO_UDEG    (180e6f / 3.14159265f)
 
+/* Largest readings, 32767 LSB times the sensitivity of the DT ranges:
+ * 0.122 mg at 4 g, 17.5 mdps at 500 dps (so it really reaches 573 dps).
+ */
+#define ACCEL_FS       39202800 /* um/s^2 */
+#define GYRO_FS        10008000 /* urad/s */
+
+#define REG_WHO_AM_I   0x0f
+#define WHO_AM_I_LSM6DSOX 0x6c
+#define SPI_READ       0x80
+
 K_THREAD_STACK_DEFINE(imu_stack, IMU_STACK_SIZE);
 static struct k_thread imu_thread;
 
 static const struct device *const imu = DEVICE_DT_GET(DT_NODELABEL(imu));
+/* same bus settings as the driver's (mode 3) */
+static const struct spi_dt_spec spi = SPI_DT_SPEC_GET(
+	DT_NODELABEL(imu),
+	SPI_OP_MODE_MASTER | SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA,
+	0);
 
 /* Timing of the samples in one report window, in hw cycles
  * (k_cycle_get_32, the CPU clock on the M4).
@@ -86,6 +111,8 @@ struct imu_stats {
 	uint32_t gap_max;
 	uint32_t gap_sum;
 	uint32_t fetch_max; /* longest sensor_sample_fetch: SPI cost per sample */
+	uint32_t faults;    /* samples that started a fault */
+	enum imu_fault last_fault;
 };
 
 /* Result of the gyro calibration, for the summary thread to print. */
@@ -99,6 +126,7 @@ struct imu_cal {
 static struct k_spinlock lock;
 static struct imu_stats stats; /* guarded by lock */
 static struct imu_cal cal;     /* guarded by lock */
+static struct imu_health health; /* guarded by lock */
 static int32_t accel[3]; /* um/s^2, latest sample, guarded by lock */
 static int32_t gyro[3];  /* urad/s, latest sample minus bias, guarded by lock */
 static float roll, pitch; /* rad, latest tilt estimate, guarded by lock */
@@ -106,6 +134,7 @@ static bool have_sample; /* guarded by lock */
 
 /* only touched by on_drdy */
 static uint32_t last_cycle;
+static enum imu_fault last_fault = IMU_FAULT_NO_DATA;
 static bool have_last;
 static int32_t bias[3];
 static bool calibrated;
@@ -118,6 +147,29 @@ static struct tilt tilt;
 static void stats_reset(struct imu_stats *s)
 {
 	*s = (struct imu_stats){.gap_min = UINT32_MAX};
+}
+
+/* Microseconds for imu_health: wraps at 2^32 us like it expects. The
+ * cycle counter can't be used, it wraps at 2^32 cycles (~20 s). Tick
+ * resolution (100 us) is plenty for a 10 ms timeout.
+ */
+static uint32_t now_us(void)
+{
+	return (uint32_t)k_ticks_to_us_floor64(k_uptime_ticks());
+}
+
+static int read_reg(uint8_t reg, uint8_t *val)
+{
+	uint8_t tx[2] = {reg | SPI_READ, 0};
+	uint8_t rx[2];
+	const struct spi_buf tx_buf = {.buf = tx, .len = sizeof(tx)};
+	const struct spi_buf rx_buf = {.buf = rx, .len = sizeof(rx)};
+	const struct spi_buf_set tx_set = {.buffers = &tx_buf, .count = 1};
+	const struct spi_buf_set rx_set = {.buffers = &rx_buf, .count = 1};
+	int ret = spi_transceive_dt(&spi, &tx_set, &rx_set);
+
+	*val = rx[1];
+	return ret;
 }
 
 /* Feed one gyro sample into the calibration window. When the window is
@@ -167,9 +219,12 @@ static void cal_add(const int32_t g[3])
 static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 {
 	struct sensor_value av[3], gv[3];
-	int32_t a[3], g[3];
+	int32_t a[3] = {0}, g[3] = {0};
 	uint32_t now = k_cycle_get_32();
+	uint32_t t = now_us();
 	uint32_t fetch;
+	enum imu_fault fault;
+	bool use;
 	int ret;
 
 	ARG_UNUSED(trig);
@@ -184,23 +239,11 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 			a[i] = (int32_t)sensor_value_to_micro(&av[i]);
 			g[i] = (int32_t)sensor_value_to_micro(&gv[i]);
 		}
-		if (calibrated) {
-			float af[3], gf[3];
-
-			for (int i = 0; i < 3; i++) {
-				g[i] -= bias[i];
-				af[i] = a[i] * 1e-6f;
-				gf[i] = g[i] * 1e-6f;
-			}
-			/* the first update ignores dt, so no special case for it */
-			tilt_update(&tilt, af, gf,
-				    (float)(now - last_cycle) / sys_clock_hw_cycles_per_sec());
-		} else {
-			cal_add(g);
-		}
 	}
 
 	K_SPINLOCK(&lock) {
+		imu_health_sample(&health, t, ret == 0, a, g);
+		fault = imu_health_check(&health, t);
 		stats.samples++;
 		stats.fetch_max = MAX(stats.fetch_max, fetch);
 		if (have_last) {
@@ -213,7 +256,35 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 		}
 		if (ret) {
 			stats.errors++;
-		} else if (calibrated) {
+		}
+		if (fault != IMU_OK && fault != last_fault) {
+			stats.faults++;
+			stats.last_fault = fault;
+		}
+	}
+	last_fault = fault;
+
+	use = fault == IMU_OK && calibrated;
+	if (fault != IMU_OK) {
+		/* the next healthy sample takes the accelerometer's angles */
+		tilt_init(&tilt, TILT_TAU);
+	} else if (calibrated) {
+		float af[3], gf[3];
+
+		for (int i = 0; i < 3; i++) {
+			g[i] -= bias[i];
+			af[i] = a[i] * 1e-6f;
+			gf[i] = g[i] * 1e-6f;
+		}
+		/* the first update ignores dt, so no special case for it */
+		tilt_update(&tilt, af, gf,
+			    (float)(now - last_cycle) / sys_clock_hw_cycles_per_sec());
+	} else {
+		cal_add(g);
+	}
+
+	if (use) {
+		K_SPINLOCK(&lock) {
 			memcpy(accel, a, sizeof(a));
 			memcpy(gyro, g, sizeof(g));
 			roll = tilt.roll;
@@ -272,9 +343,12 @@ static void imu_task(void *p1, void *p2, void *p3)
 	struct imu_stats s;
 	struct imu_cal c;
 	uint32_t cal_printed = 0;
+	enum imu_fault fault, printed = IMU_OK;
 	int32_t a[3], g[3];
 	float r, p;
-	bool ok;
+	uint8_t id;
+	bool ok, id_ok;
+	int ret;
 
 	ARG_UNUSED(p1);
 	ARG_UNUSED(p2);
@@ -283,7 +357,13 @@ static void imu_task(void *p1, void *p2, void *p3)
 	for (;;) {
 		k_msleep(IMU_REPORT_MS);
 
+		ret = read_reg(REG_WHO_AM_I, &id);
+		id_ok = ret == 0 && id == WHO_AM_I_LSM6DSOX;
+
 		K_SPINLOCK(&lock) {
+			imu_health_who_am_i(&health, id_ok);
+			/* also sees samples that stopped coming */
+			fault = imu_health_check(&health, now_us());
 			s = stats;
 			stats_reset(&stats);
 			c = cal;
@@ -304,7 +384,19 @@ static void imu_task(void *p1, void *p2, void *p3)
 		       k_cyc_to_us_floor32(s.gap_max),
 		       k_cyc_to_us_floor32(s.fetch_max),
 		       s.errors);
-		if (ok) {
+		if (!id_ok) {
+			printk("imu: WHO_AM_I 0x%02x, spi %d\n", id, ret);
+		}
+		if (s.faults) {
+			printk("imu: %u faults, last %s\n", s.faults, imu_fault_str(s.last_fault));
+		}
+		if (fault != IMU_OK) {
+			printk("imu: FAULT %s\n", imu_fault_str(fault));
+		} else if (printed != IMU_OK) {
+			printk("imu: healthy (was %s)\n", imu_fault_str(printed));
+		}
+		printed = fault;
+		if (ok && fault == IMU_OK) {
 			print_xyz("imu: a[m/s2]", a);
 			print_xyz("  g[rad/s]", g);
 			printk("\nimu: tilt [deg]");
@@ -315,21 +407,27 @@ static void imu_task(void *p1, void *p2, void *p3)
 	}
 }
 
-bool imu_latest(struct imu_sample *out)
+enum imu_fault imu_latest(struct imu_sample *out)
 {
 	int32_t a[3], g[3];
 	float r, p, q[4];
+	enum imu_fault fault;
 	bool ok;
 
 	K_SPINLOCK(&lock) {
+		fault = imu_health_check(&health, now_us());
 		ok = have_sample;
 		memcpy(a, accel, sizeof(a));
 		memcpy(g, gyro, sizeof(g));
 		r = roll;
 		p = pitch;
 	}
+	if (fault != IMU_OK) {
+		return fault;
+	}
 	if (!ok) {
-		return false;
+		/* healthy, but the gyro calibration isn't done yet */
+		return IMU_FAULT_NO_DATA;
 	}
 	/* convert outside the lock: the sampling thread waits on it */
 	for (int i = 0; i < 3; i++) {
@@ -340,7 +438,7 @@ bool imu_latest(struct imu_sample *out)
 	for (int i = 0; i < 4; i++) {
 		out->orientation[i] = q[i];
 	}
-	return true;
+	return IMU_OK;
 }
 
 int imu_init(void)
@@ -353,6 +451,7 @@ int imu_init(void)
 	}
 
 	stats_reset(&stats);
+	imu_health_init(&health, ACCEL_FS, GYRO_FS);
 	tilt_init(&tilt, TILT_TAU);
 	ret = sensor_trigger_set(imu, &drdy, on_drdy);
 	if (ret) {
