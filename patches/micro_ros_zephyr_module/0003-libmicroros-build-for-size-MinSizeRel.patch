@@ -1,0 +1,25 @@
+From: Lauri Alanen <laurialanen1@gmail.com>
+Subject: [PATCH] libmicroros: build for size (MinSizeRel)
+
+CMAKE_BUILD_TYPE=Release appends -O3 after the -Os that Zephyr passes
+in, so libmicroros was built for speed. MinSizeRel keeps -Os and
+NDEBUG: about 10 KB less code on the STM32MP1 M4.
+---
+ modules/libmicroros/libmicroros.mk | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/modules/libmicroros/libmicroros.mk b/modules/libmicroros/libmicroros.mk
+index b4a11d7..3717f1a 100644
+--- a/modules/libmicroros/libmicroros.mk
++++ b/modules/libmicroros/libmicroros.mk
+@@ -17,7 +17,9 @@ UROS_IGNORE = test_tracetools lttngpy rosidl_typesupport_introspection_cpp \
+ ifeq ($(DEBUG), 1)
+ 	BUILD_TYPE = Debug
+ else
+-	BUILD_TYPE = Release
++	# MinSizeRel (-Os): Release adds -O3 after Zephyr's -Os, and code
++	# space on small MCUs matters more than speed here.
++	BUILD_TYPE = MinSizeRel
+ endif
+ 
+ CFLAGS_INTERNAL := $(X_CFLAGS)

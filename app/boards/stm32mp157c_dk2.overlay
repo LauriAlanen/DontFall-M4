@@ -50,6 +50,19 @@
 };
 
 /*
+ * The board defaults enable these; nothing on the M4 uses a UART (the
+ * console is the RAM console), so don't set them up or claim their pins
+ * (USART3 PB10/PB12, UART7 PE7/PE8).
+ */
+&usart3 {
+	status = "disabled";
+};
+
+&uart7 {
+	status = "disabled";
+};
+
+/*
  * IMU: Arduino Modulino Movement (ST LSM6DSOX) on SPI5, GPIO expansion
  * header CN2 (docs/hardware.md in DontFall). CS on PF6 as a plain GPIO:
  * the chip stays in I2C mode until CS goes low, so it must be driven.
