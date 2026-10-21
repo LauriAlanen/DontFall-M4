@@ -8,7 +8,8 @@
  * M4 memory map, all in regions Linux reserves for the M4
  * (remoteproc carveouts):
  *
- *   0x00000000  RETRAM   vector table only (CONFIG_ROMSTART_RELOCATION_ROM)
+ *   0x00000000  RETRAM     1K  vector table (CONFIG_ROMSTART_RELOCATION_ROM)
+ *   0x00000400  RETRAM    63K  more code, placed with zephyr_code_relocate()
  *   0x10000000  SRAM1    128K  code, rodata, resource table (zephyr,flash)
  *   0x10020000  SRAM2    128K  data, bss, stacks, heaps (zephyr,sram)
  *   0x10040000  SRAM3     64K  rpmsg vrings and buffers (zephyr,ipc_shm)
@@ -21,6 +22,7 @@
 #include <zephyr/dt-bindings/sensor/lsm6dso.h>
 
 /delete-node/ &mcusram;
+/delete-node/ &retram;
 
 / {
 	chosen {
@@ -31,6 +33,18 @@
 		 */
 		zephyr,ipc_shm = &mcusram3;
 		zephyr,ipc = &mailbox;
+	};
+
+	/*
+	 * RETRAM after the 1 KB vector table region, as a linker memory
+	 * region named RETRAM (CMakeLists.txt relocates code into it).
+	 * remoteproc loads it like any other ELF segment, so the code is
+	 * linked in place (NOCOPY), nothing is copied at boot.
+	 */
+	retram: memory@400 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x00000400 DT_SIZE_K(63)>;
+		zephyr,memory-region = "RETRAM";
 	};
 
 	mcusram1: memory@10000000 {

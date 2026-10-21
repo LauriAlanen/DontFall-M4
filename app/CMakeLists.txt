@@ -24,3 +24,9 @@ target_sources(app PRIVATE
     src/imu_health.c
     src/tilt.c
 )
+
+# Code in RETRAM (overlay: retram node, linker region RETRAM). Only .text
+# moves, its rodata stays in SRAM1. NOCOPY: remoteproc loads the code to
+# its address, so no copy from a load address at boot.
+# (m4-memory-plan step 2: a small test file proves the mechanism.)
+zephyr_code_relocate(FILES src/protocol.c LOCATION RETRAM_TEXT NOCOPY)
