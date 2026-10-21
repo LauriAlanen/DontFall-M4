@@ -35,6 +35,15 @@
  * over, so it takes the accelerometer's angles once the IMU is healthy
  * again instead of integrating garbage.
  *
+ * Re-init (step 7c): a chip reset or power loss puts its registers back
+ * to defaults, ODR "power down" among them: it still answers WHO_AM_I
+ * but never makes data again. Right after boot imu_init() saves the
+ * registers the driver set up (cfg_regs); the summary thread compares
+ * them once a second and writes the saved values back if they changed.
+ * Saving them from the chip instead of writing our own values keeps the
+ * register encoding in the driver. Only with a good WHO_AM_I: with a
+ * broken bus the reads mean nothing.
+ *
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -89,6 +98,7 @@
 #define REG_WHO_AM_I   0x0f
 #define WHO_AM_I_LSM6DSOX 0x6c
 #define SPI_READ       0x80
+#define REG_FUNC_CFG_ACCESS 0x01
 
 K_THREAD_STACK_DEFINE(imu_stack, IMU_STACK_SIZE);
 static struct k_thread imu_thread;
@@ -132,6 +142,17 @@ static int32_t gyro[3];  /* urad/s, latest sample minus bias, guarded by lock */
 static float roll, pitch; /* rad, latest tilt estimate, guarded by lock */
 static bool have_sample; /* guarded by lock */
 
+/* Registers the driver sets at boot, in the order they are written back:
+ * CTRL3_C (BDU, auto-increment) first, the ODRs (CTRL1_XL, CTRL2_G) last
+ * so the chip starts sampling only when fully set up. FIFO_CTRL4 (FIFO
+ * bypass), COUNTER_BDR_REG1 (pulsed data ready), INT1_CTRL (data ready
+ * on INT1), CTRL4_C..CTRL10_C (power modes, I3C off), I3C_BUS_AVB.
+ */
+static const uint8_t cfg_regs[] = {
+	0x12, 0x0a, 0x0b, 0x0d, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x62, 0x10, 0x11,
+};
+static uint8_t cfg_saved[ARRAY_SIZE(cfg_regs)]; /* summary thread only, after init */
+
 /* only touched by on_drdy */
 static uint32_t last_cycle;
 static enum imu_fault last_fault = IMU_FAULT_NO_DATA;
@@ -170,6 +191,50 @@ static int read_reg(uint8_t reg, uint8_t *val)
 
 	*val = rx[1];
 	return ret;
+}
+
+static int write_reg(uint8_t reg, uint8_t val)
+{
+	uint8_t tx[2] = {reg, val};
+	const struct spi_buf tx_buf = {.buf = tx, .len = sizeof(tx)};
+	const struct spi_buf_set tx_set = {.buffers = &tx_buf, .count = 1};
+
+	return spi_write_dt(&spi, &tx_set);
+}
+
+static int cfg_save(void)
+{
+	for (int i = 0; i < ARRAY_SIZE(cfg_regs); i++) {
+		int ret = read_reg(cfg_regs[i], &cfg_saved[i]);
+
+		if (ret) {
+			return ret;
+		}
+	}
+	return 0;
+}
+
+/* If the chip lost its setup, write it back. */
+static void cfg_restore_if_lost(void)
+{
+	int lost = -1;
+	uint8_t v = 0;
+
+	for (int i = 0; i < ARRAY_SIZE(cfg_regs) && lost < 0; i++) {
+		if (read_reg(cfg_regs[i], &v) == 0 && v != cfg_saved[i]) {
+			lost = i;
+		}
+	}
+	if (lost < 0) {
+		return;
+	}
+	printk("imu: chip setup lost (reg 0x%02x 0x%02x, was 0x%02x), writing it again\n",
+	       cfg_regs[lost], v, cfg_saved[lost]);
+	/* user register bank, the default after a reset anyway */
+	write_reg(REG_FUNC_CFG_ACCESS, 0);
+	for (int i = 0; i < ARRAY_SIZE(cfg_regs); i++) {
+		write_reg(cfg_regs[i], cfg_saved[i]);
+	}
 }
 
 /* Feed one gyro sample into the calibration window. When the window is
@@ -359,6 +424,9 @@ static void imu_task(void *p1, void *p2, void *p3)
 
 		ret = read_reg(REG_WHO_AM_I, &id);
 		id_ok = ret == 0 && id == WHO_AM_I_LSM6DSOX;
+		if (id_ok) {
+			cfg_restore_if_lost();
+		}
 
 		K_SPINLOCK(&lock) {
 			imu_health_who_am_i(&health, id_ok);
@@ -456,6 +524,12 @@ int imu_init(void)
 	ret = sensor_trigger_set(imu, &drdy, on_drdy);
 	if (ret) {
 		printk("imu: data-ready trigger failed: %d\n", ret);
+		return ret;
+	}
+	/* after the trigger: it routes data ready to INT1 */
+	ret = cfg_save();
+	if (ret) {
+		printk("imu: reading the chip setup failed: %d\n", ret);
 		return ret;
 	}
 
