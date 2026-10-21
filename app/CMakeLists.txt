@@ -25,8 +25,6 @@ target_sources(app PRIVATE
     src/tilt.c
 )
 
-# Code in RETRAM (overlay: retram node, linker region RETRAM). Only .text
-# moves, its rodata stays in SRAM1. NOCOPY: remoteproc loads the code to
-# its address, so no copy from a load address at boot.
-# (m4-memory-plan step 2: a small test file proves the mechanism.)
-zephyr_code_relocate(FILES src/protocol.c LOCATION RETRAM_TEXT NOCOPY)
+# libmicroros's code and constants in RETRAM (overlay: retram node, linker
+# region RETRAM), our own code stays in SRAM1. See retram.ld.
+zephyr_linker_sources(PRE_TEXT_SECTIONS retram.ld)
