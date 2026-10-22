@@ -1,15 +1,15 @@
 /*
  * micro-ROS custom transport over the IPC_CH_UROS rpmsg channel. On Linux
- * that is /dev/ttyRPMSG1, where the stock micro-ROS Agent runs in serial
+ * that is /dev/ttyRPMSG0, where the stock micro-ROS Agent runs in serial
  * mode:
  *
- *   micro-ros-agent serial --dev /dev/ttyRPMSG1
+ *   micro-ros-agent serial --dev /dev/ttyRPMSG0
  *
  * It is a byte stream with XRCE-DDS framing (HDLC-like, 0x7E-delimited,
  * CRC-checked), the same framing the Agent uses on a UART, so rpmsg message
  * boundaries don't matter and the Agent needs no custom code.
  *
- * The A7 must write to /dev/ttyRPMSG1 once before starting the Agent (any
+ * The A7 must write to /dev/ttyRPMSG0 once before starting the Agent (any
  * byte, e.g. a newline): rpmsg only learns Linux's endpoint address from a
  * first message, and an XRCE-DDS client always speaks first. Bytes outside
  * a frame are ignored.

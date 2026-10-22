@@ -2,10 +2,9 @@
  * DontFall M4 firmware: OpenAMP remote on the STM32MP157 Cortex-M4.
  *
  * Wires the modules together:
- *  - ipc:       rpmsg-tty channels to Linux (/dev/ttyRPMSG0, /dev/ttyRPMSG1)
- *  - protocol:  line protocol on the first channel (PING/PONG)
- *  - heartbeat: A7 liveness watchdog; LD7 blinks while the A7 is talking
- *  - uros:      micro-ROS node, to the micro-ROS Agent on the second channel
+ *  - ipc:       rpmsg-tty channel to Linux (/dev/ttyRPMSG0)
+ *  - link_led:  LD7 blinks while the micro-ROS Agent session is up
+ *  - uros:      micro-ROS node, to the micro-ROS Agent on the channel
  *  - imu:       LSM6DSOX on SPI5 (bring-up: data-ready sampling, timing printk)
  *  - control:   the supervisor (arm/disarm), fed by every IMU sample
  *  - wdog:      WWDG1 resets the M4 if it hangs
@@ -17,16 +16,14 @@
 #include <zephyr/sys/printk.h>
 
 #include "control.h"
-#include "heartbeat.h"
 #include "imu.h"
 #include "ipc.h"
-#include "protocol.h"
+#include "link_led.h"
 #include "uros.h"
 #include "uros_transport.h"
 #include "wdog.h"
 
 static const ipc_rx_cb_t rx_cbs[IPC_CH_COUNT] = {
-	[IPC_CH_CTRL] = protocol_rx,
 	[IPC_CH_UROS] = uros_transport_rx,
 };
 
@@ -36,9 +33,9 @@ int main(void)
 
 	printk("dontfall-m4 up\n");
 
-	ret = heartbeat_init();
+	ret = link_led_init();
 	if (ret) {
-		/* keep the link up anyway: PONGs still prove the M4 is alive */
+		/* only the status LED is missing: run anyway */
 		printk("LD7 not available: %d\n", ret);
 	}
 

@@ -210,7 +210,7 @@ static void ipc_rx_task(void *arg1, void *arg2, void *arg3)
 	}
 	printk("rpmsg-tty ready (%d channels)\n", IPC_CH_COUNT);
 
-	while (epts[IPC_CH_CTRL].addr != RPMSG_ADDR_ANY) {
+	while (epts[IPC_CH_UROS].addr != RPMSG_ADDR_ANY) {
 		k_msgq_get(&rx_queue, &msg, K_FOREVER);
 		if (msg.len) {
 			user_rx_cbs[msg.ch](msg.data, msg.len);

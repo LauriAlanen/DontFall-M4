@@ -16,8 +16,7 @@
  * the order below.
  */
 enum ipc_channel {
-	IPC_CH_CTRL,	/* /dev/ttyRPMSG0: line protocol (protocol.h) */
-	IPC_CH_UROS,	/* /dev/ttyRPMSG1: micro-ROS, to the micro-ROS Agent */
+	IPC_CH_UROS,	/* /dev/ttyRPMSG0: micro-ROS, to the micro-ROS Agent */
 	IPC_CH_COUNT,
 };
 

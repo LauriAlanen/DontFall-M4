@@ -26,6 +26,7 @@
 #include "diag.h"
 
 #include "imu.h"
+#include "link_led.h"
 #include "ros_str.h"
 #include "uros_transport.h"
 
@@ -316,6 +317,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 			k_sleep(K_MSEC(AGENT_SEARCH_MS));
 			continue;
 		}
+		link_led_set(true);
 		printk("uros: publishing /dontfall_m4/imu, /diagnostics, serving ~/arm, subscribed to /cmd_vel\n");
 
 		int64_t next_check = k_uptime_get() + AGENT_CHECK_MS;
@@ -331,6 +333,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 			}
 		}
 
+		link_led_set(false);
 		printk("uros: Agent lost\n");
 		destroy_entities();
 		uros_transport_reset();
