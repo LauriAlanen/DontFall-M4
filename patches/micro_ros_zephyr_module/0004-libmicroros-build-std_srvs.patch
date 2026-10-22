@@ -1,0 +1,24 @@
+From: Lauri Alanen <laurialanen1@gmail.com>
+Subject: [PATCH] libmicroros: build std_srvs
+
+The arm/disarm service of the M4 node is std_srvs/srv/SetBool, the
+standard type for it. Upstream leaves std_srvs out of libmicroros.
+
+Filtered out of UROS_IGNORE further down instead of editing the list,
+so this hunk shares no lines with patch 0002 (apply-patches.sh checks
+each patch on its own).
+---
+
+diff --git a/modules/libmicroros/libmicroros.mk b/modules/libmicroros/libmicroros.mk
+--- a/modules/libmicroros/libmicroros.mk
++++ b/modules/libmicroros/libmicroros.mk
+@@ -28,6 +28,9 @@
+ CFLAGS_INTERNAL := -c -I$(ZEPHYR_BASE)/include/posix -I$(PROJECT_BINARY_DIR)/include/generated $(CFLAGS_INTERNAL)
+ CXXFLAGS_INTERNAL := -c -I$(ZEPHYR_BASE)/include/posix -I$(PROJECT_BINARY_DIR)/include/generated $(CXXFLAGS_INTERNAL)
+ 
++# std_srvs: the application's arm service is std_srvs/srv/SetBool
++UROS_IGNORE := $(filter-out std_srvs,$(UROS_IGNORE))
++
+ all: $(COMPONENT_PATH)/libmicroros.a
+ 
+ clean:

@@ -23,6 +23,7 @@
 static struct k_spinlock lock;
 static struct supervisor sup;      /* guarded by lock */
 static uint32_t last_sample_us;    /* guarded by lock */
+static struct supervisor_input last_in; /* guarded by lock, imu_ok false until a sample */
 static struct control_status shown; /* guarded by lock: last one printed */
 
 static struct k_timer tick;
@@ -48,6 +49,7 @@ void control_imu_sample(uint32_t now_us, bool ok, float roll, float pitch)
 
 	K_SPINLOCK(&lock) {
 		last_sample_us = now_us;
+		last_in = in;
 		supervisor_update(&sup, &in);
 		note_change();
 	}
@@ -94,6 +96,32 @@ void control_init(void)
 	k_work_init(&print_work, print_state);
 	k_timer_init(&tick, on_tick, NULL);
 	k_timer_start(&tick, K_MSEC(CONTROL_TICK_MS), K_MSEC(CONTROL_TICK_MS));
+}
+
+enum supervisor_reason control_arm(void)
+{
+	enum supervisor_reason r;
+
+	K_SPINLOCK(&lock) {
+		struct supervisor_input in = last_in;
+
+		in.now_us = uptime_us();
+		/* the timer may not have run yet since the samples stopped */
+		if (in.now_us - last_sample_us > SAMPLE_TIMEOUT_US) {
+			in.imu_ok = false;
+		}
+		r = supervisor_arm(&sup, &in);
+		note_change();
+	}
+	return r;
+}
+
+void control_disarm(void)
+{
+	K_SPINLOCK(&lock) {
+		supervisor_disarm(&sup);
+		note_change();
+	}
 }
 
 void control_status(struct control_status *out)
