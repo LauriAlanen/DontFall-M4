@@ -46,4 +46,9 @@ void tilt_update(struct tilt *t, const float accel[3], const float gyro[3], floa
  */
 void tilt_quaternion(float roll, float pitch, float q[4]);
 
+/* Angle between the body's z axis and up, 0..pi rad, whichever way it
+ * leans: for checks that don't care about the direction.
+ */
+float tilt_from_upright(float roll, float pitch);
+
 #endif /* DONTFALL_M4_TILT_H_ */

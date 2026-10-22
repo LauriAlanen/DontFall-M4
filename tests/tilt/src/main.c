@@ -176,4 +176,19 @@ ZTEST(tilt, test_quaternion_matches_angles)
 	}
 }
 
+/* The supervisor's arm and disarm checks: any direction counts. */
+ZTEST(tilt, test_from_upright)
+{
+	zassert_within(tilt_from_upright(0, 0), 0, 1e-6f);
+	zassert_within(tilt_from_upright(30 * DEG, 0), 30 * DEG, 1e-5f);
+	zassert_within(tilt_from_upright(0, -30 * DEG), 30 * DEG, 1e-5f);
+	/* 0.1 deg is still resolved, not rounded to 0 */
+	zassert_within(tilt_from_upright(0.1f * DEG, 0), 0.1f * DEG, 1e-6f);
+	/* leaning both ways adds up: cos t = cos r cos p */
+	zassert_within(tilt_from_upright(20 * DEG, 20 * DEG),
+		       acosf(cosf(20 * DEG) * cosf(20 * DEG)), 1e-5f);
+	/* upside down */
+	zassert_within(tilt_from_upright(180 * DEG, 0), 180 * DEG, 1e-5f);
+}
+
 ZTEST_SUITE(tilt, NULL, NULL, NULL, NULL, NULL);

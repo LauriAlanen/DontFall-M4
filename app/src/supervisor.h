@@ -58,7 +58,7 @@ enum supervisor_reason {
 struct supervisor_input {
 	uint32_t now_us; /* any free-running microsecond clock, may wrap */
 	bool imu_ok;
-	float tilt; /* rad from upright, on the balance axis */
+	float tilt; /* rad from upright, in any direction (0..pi) */
 };
 
 /* Wanted motion: forward speed (m/s) and turn rate (rad/s), REP 103. */

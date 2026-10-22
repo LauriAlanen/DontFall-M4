@@ -35,6 +35,9 @@
  * over, so it takes the accelerometer's angles once the IMU is healthy
  * again instead of integrating garbage.
  *
+ * After the checks, every fetch goes to the sample callback from
+ * imu_init() (the supervisor, failsafe plan step 2), healthy or not.
+ *
  * Re-init (step 7c): a chip reset or power loss puts its registers back
  * to defaults, ODR "power down" among them: it still answers WHO_AM_I
  * but never makes data again. Right after boot imu_init() saves the
@@ -50,6 +53,7 @@
 #include "imu.h"
 #include "imu_health.h"
 #include "tilt.h"
+#include "uptime_us.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -153,6 +157,8 @@ static const uint8_t cfg_regs[] = {
 };
 static uint8_t cfg_saved[ARRAY_SIZE(cfg_regs)]; /* summary thread only, after init */
 
+static imu_sample_cb_t sample_cb; /* set once by imu_init() */
+
 /* only touched by on_drdy */
 static uint32_t last_cycle;
 static enum imu_fault last_fault = IMU_FAULT_NO_DATA;
@@ -168,15 +174,6 @@ static struct tilt tilt;
 static void stats_reset(struct imu_stats *s)
 {
 	*s = (struct imu_stats){.gap_min = UINT32_MAX};
-}
-
-/* Microseconds for imu_health: wraps at 2^32 us like it expects. The
- * cycle counter can't be used, it wraps at 2^32 cycles (~20 s). Tick
- * resolution (100 us) is plenty for a 10 ms timeout.
- */
-static uint32_t now_us(void)
-{
-	return (uint32_t)k_ticks_to_us_floor64(k_uptime_ticks());
 }
 
 static int read_reg(uint8_t reg, uint8_t *val)
@@ -286,7 +283,7 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 	struct sensor_value av[3], gv[3];
 	int32_t a[3] = {0}, g[3] = {0};
 	uint32_t now = k_cycle_get_32();
-	uint32_t t = now_us();
+	uint32_t t = uptime_us();
 	uint32_t fetch;
 	enum imu_fault fault;
 	bool use;
@@ -346,6 +343,10 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 			    (float)(now - last_cycle) / sys_clock_hw_cycles_per_sec());
 	} else {
 		cal_add(g);
+	}
+
+	if (sample_cb) {
+		sample_cb(t, use, tilt.roll, tilt.pitch);
 	}
 
 	if (use) {
@@ -431,7 +432,7 @@ static void imu_task(void *p1, void *p2, void *p3)
 		K_SPINLOCK(&lock) {
 			imu_health_who_am_i(&health, id_ok);
 			/* also sees samples that stopped coming */
-			fault = imu_health_check(&health, now_us());
+			fault = imu_health_check(&health, uptime_us());
 			s = stats;
 			stats_reset(&stats);
 			c = cal;
@@ -483,7 +484,7 @@ enum imu_fault imu_latest(struct imu_sample *out)
 	bool ok;
 
 	K_SPINLOCK(&lock) {
-		fault = imu_health_check(&health, now_us());
+		fault = imu_health_check(&health, uptime_us());
 		ok = have_sample;
 		memcpy(a, accel, sizeof(a));
 		memcpy(g, gyro, sizeof(g));
@@ -509,10 +510,11 @@ enum imu_fault imu_latest(struct imu_sample *out)
 	return IMU_OK;
 }
 
-int imu_init(void)
+int imu_init(imu_sample_cb_t cb)
 {
 	int ret;
 
+	sample_cb = cb;
 	if (!device_is_ready(imu)) {
 		printk("imu: %s not ready\n", imu->name);
 		return -ENODEV;

@@ -23,6 +23,9 @@ target_sources(app PRIVATE
     src/imu.c
     src/imu_health.c
     src/tilt.c
+    src/supervisor.c
+    src/control.c
+    src/diag.c
 )
 
 # libmicroros's code and constants in RETRAM (overlay: retram node, linker

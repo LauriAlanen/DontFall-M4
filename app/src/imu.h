@@ -21,6 +21,9 @@
 #ifndef DONTFALL_M4_IMU_H_
 #define DONTFALL_M4_IMU_H_
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "imu_health.h"
 
 struct imu_sample {
@@ -32,11 +35,19 @@ struct imu_sample {
 	double orientation[4];
 };
 
-/* Check the sensor came up, start sampling and the summary thread.
+/* Called in the sampling thread after every fetch, at ~850 Hz: keep it
+ * short, no blocking or printing. now_us is uptime_us() at the fetch. ok
+ * false: no trusted sample (a fault, or the gyro not calibrated yet), then
+ * roll and pitch mean nothing. Roll and pitch in rad, see tilt.h.
+ */
+typedef void (*imu_sample_cb_t)(uint32_t now_us, bool ok, float roll, float pitch);
+
+/* Check the sensor came up, start sampling and the summary thread. cb
+ * (may be NULL) gets every sample.
  * Returns 0, -ENODEV if the driver failed to init (wrong WHO_AM_I, SPI
  * error), or the error from setting the data-ready trigger.
  */
-int imu_init(void);
+int imu_init(imu_sample_cb_t cb);
 
 /* Copy the newest sample to *out. Any thread; never blocks on the sensor.
  * Returns IMU_OK, or the fault and leaves *out alone: then the tilt can't

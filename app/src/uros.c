@@ -20,6 +20,8 @@
 #include <rmw_microros/time_sync.h>
 #include <sensor_msgs/msg/imu.h>
 
+#include "diag.h"
+
 #include "imu.h"
 #include "uros_transport.h"
 
@@ -27,6 +29,8 @@
 #define UROS_PRIORITY     K_PRIO_PREEMPT(5)
 /* 50 Hz: telemetry for the PC, the IMU itself samples at ~850 Hz */
 #define PUBLISH_PERIOD_MS 20
+/* the usual rate for /diagnostics; the supervisor latches its state */
+#define DIAG_PERIOD_MS    1000
 /* Orientation variance, rad^2. Roll and pitch: (1 deg)^2, the accuracy
  * aimed for at rest (docs/archive/imu-plan.md step 6); worse while
  * accelerating.
@@ -50,8 +54,11 @@ static rclc_support_t support;
 static rcl_node_t node;
 static rcl_publisher_t publisher;
 static rcl_timer_t timer;
+static rcl_publisher_t diag_publisher;
+static rcl_timer_t diag_timer;
 static rclc_executor_t executor;
 static sensor_msgs__msg__Imu msg;
+static diagnostic_msgs__msg__DiagnosticArray diag_msg;
 static char frame_id[] = "imu_link";
 
 /* Fields that never change: set once, the timer only fills in the data. */
@@ -105,6 +112,22 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 	}
 }
 
+static void diag_timer_callback(rcl_timer_t *timer, int64_t last_call_time)
+{
+	ARG_UNUSED(last_call_time);
+
+	if (!timer) {
+		return;
+	}
+	diag_fill(&diag_msg, rmw_uros_epoch_nanos());
+
+	rcl_ret_t rc = rcl_publish(&diag_publisher, &diag_msg, NULL);
+
+	if (rc != RCL_RET_OK) {
+		printk("uros: diagnostics publish failed: %d\n", (int)rc);
+	}
+}
+
 /* print the failing call and bail out of create_entities() */
 #define UROS_CHECK(fn)                                                         \
 	do {                                                                   \
@@ -126,14 +149,24 @@ static bool create_entities(void)
 	UROS_CHECK(rclc_publisher_init_best_effort(&publisher, &node,
 						   ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
 						   "~/imu"));
+	/* reliable, the default: what rqt_robot_monitor and the aggregator
+	 * subscribe with. Global name, the one every diagnostics tool reads.
+	 */
+	UROS_CHECK(rclc_publisher_init_default(&diag_publisher, &node,
+					       ROSIDL_GET_MSG_TYPE_SUPPORT(diagnostic_msgs, msg,
+									   DiagnosticArray),
+					       "/diagnostics"));
 	/* not fatal: without it stamps are M4 uptime instead of wall time */
 	if (rmw_uros_sync_session(TIME_SYNC_MS) != RMW_RET_OK) {
 		printk("uros: time sync with the Agent failed\n");
 	}
 	UROS_CHECK(rclc_timer_init_default2(&timer, &support, RCL_MS_TO_NS(PUBLISH_PERIOD_MS),
 					    timer_callback, true));
-	UROS_CHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+	UROS_CHECK(rclc_timer_init_default2(&diag_timer, &support, RCL_MS_TO_NS(DIAG_PERIOD_MS),
+					    diag_timer_callback, true));
+	UROS_CHECK(rclc_executor_init(&executor, &support.context, 2, &allocator));
 	UROS_CHECK(rclc_executor_add_timer(&executor, &timer));
+	UROS_CHECK(rclc_executor_add_timer(&executor, &diag_timer));
 	return true;
 }
 
@@ -154,7 +187,9 @@ static void destroy_entities(void)
 	rcl_ret_t rc;
 
 	rc = rclc_executor_fini(&executor);
+	rc = rcl_timer_fini(&diag_timer);
 	rc = rcl_timer_fini(&timer);
+	rc = rcl_publisher_fini(&diag_publisher, &node);
 	rc = rcl_publisher_fini(&publisher, &node);
 	rc = rcl_node_fini(&node);
 	rc = rclc_support_fini(&support);
@@ -162,7 +197,9 @@ static void destroy_entities(void)
 
 	executor = rclc_executor_get_zero_initialized_executor();
 	timer = rcl_get_zero_initialized_timer();
+	diag_timer = rcl_get_zero_initialized_timer();
 	publisher = rcl_get_zero_initialized_publisher();
+	diag_publisher = rcl_get_zero_initialized_publisher();
 	node = rcl_get_zero_initialized_node();
 	memset(&support, 0, sizeof(support));
 	/* fini on half-made entities sets errors nobody reads */
@@ -183,9 +220,12 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 	allocator = rcl_get_default_allocator();
 	executor = rclc_executor_get_zero_initialized_executor();
 	timer = rcl_get_zero_initialized_timer();
+	diag_timer = rcl_get_zero_initialized_timer();
 	publisher = rcl_get_zero_initialized_publisher();
+	diag_publisher = rcl_get_zero_initialized_publisher();
 	node = rcl_get_zero_initialized_node();
 	imu_msg_init();
+	diag_init(&diag_msg);
 
 	if (uros_transport_init()) {
 		printk("uros: transport init failed\n");
@@ -209,7 +249,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 			k_sleep(K_MSEC(AGENT_SEARCH_MS));
 			continue;
 		}
-		printk("uros: publishing /dontfall_m4/imu\n");
+		printk("uros: publishing /dontfall_m4/imu, /diagnostics\n");
 
 		int64_t next_check = k_uptime_get() + AGENT_CHECK_MS;
 

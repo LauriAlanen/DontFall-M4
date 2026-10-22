@@ -93,3 +93,14 @@ void tilt_quaternion(float roll, float pitch, float q[4])
 	q[2] = -sr * sp;
 	q[3] = cr * cp;
 }
+
+float tilt_from_upright(float roll, float pitch)
+{
+	/* "up" in body axes is (-sin p, sin r cos p, cos r cos p); atan2
+	 * stays accurate near 0 and past 90 deg, unlike acos of the z part
+	 */
+	float sp = sinf(pitch), cp = cosf(pitch);
+	float sr = sinf(roll), cr = cosf(roll);
+
+	return atan2f(sqrtf(sp * sp + sr * sr * cp * cp), cr * cp);
+}

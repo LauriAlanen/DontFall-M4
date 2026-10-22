@@ -7,6 +7,7 @@
  *  - heartbeat: A7 liveness watchdog; LD7 blinks while the A7 is talking
  *  - uros:      micro-ROS node, to the micro-ROS Agent on the second channel
  *  - imu:       LSM6DSOX on SPI5 (bring-up: data-ready sampling, timing printk)
+ *  - control:   the supervisor (arm/disarm), fed by every IMU sample
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,6 +15,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
+#include "control.h"
 #include "heartbeat.h"
 #include "imu.h"
 #include "ipc.h"
@@ -43,7 +45,10 @@ int main(void)
 		printk("ipc_start failed: %d\n", ret);
 	}
 
-	ret = imu_init();
+	/* before the IMU: it starts calling control_imu_sample() */
+	control_init();
+
+	ret = imu_init(control_imu_sample);
 	if (ret) {
 		printk("imu_init failed: %d\n", ret);
 	}
