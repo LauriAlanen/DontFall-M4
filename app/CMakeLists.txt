@@ -26,6 +26,7 @@ target_sources(app PRIVATE
     src/supervisor.c
     src/control.c
     src/diag.c
+    src/wdog.c
 )
 
 # libmicroros's code and constants in RETRAM (overlay: retram node, linker

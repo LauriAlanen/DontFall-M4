@@ -108,3 +108,10 @@
 		drdy-pulsed;
 	};
 };
+
+/* M4 watchdog (src/wdog.c). Its reset is the EXTI 68 event Linux's
+ * remoteproc reports as a crash.
+ */
+&wwdg1 {
+	status = "okay";
+};

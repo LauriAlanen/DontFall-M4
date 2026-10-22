@@ -1,0 +1,49 @@
+From: Lauri Alanen <laurialanen1@gmail.com>
+Subject: [PATCH] stm32mp1: make WWDG1 usable
+
+Two upstream bugs kept wdt_wwdg_stm32 from working on the MP1:
+
+- the wwdg1 node's clock cell is 0x800, bit 11 of RCC_MC_APB1ENSETR,
+  which is SPI2EN. WWDG1EN is bit 28 (0x10000000), so the watchdog's
+  clock was never turned on and SPI2's was.
+- the MP1 clock driver returned -ENOTSUP for the rate of WWDG1, and the
+  watchdog driver used the error code as the clock frequency. WWDG1 has
+  no kernel clock: it counts PCLK1, which the LL driver reads back from
+  the RCC registers.
+
+Both together made wdt_install_timeout() fail with -EINVAL.
+---
+
+diff --git a/drivers/clock_control/clock_stm32_ll_mp1.c b/drivers/clock_control/clock_stm32_ll_mp1.c
+index 261ca94d..4b48fa24 100644
+--- a/drivers/clock_control/clock_stm32_ll_mp1.c
++++ b/drivers/clock_control/clock_stm32_ll_mp1.c
+@@ -176,7 +176,14 @@ static int stm32_clock_control_get_subsys_rate(const struct device *clock,
+ 		case LL_APB1_GRP1_PERIPH_CEC:
+ 			*rate = LL_RCC_GetCECClockFreq(LL_RCC_CEC_CLKSOURCE);
+ 			break;
+-		case LL_APB1_GRP1_PERIPH_WWDG1:
++		case LL_APB1_GRP1_PERIPH_WWDG1: {
++			/* no kernel clock: it counts PCLK1 */
++			LL_RCC_ClocksTypeDef clocks;
++
++			LL_RCC_GetSystemClocksFreq(&clocks);
++			*rate = clocks.PCLK1_Frequency;
++			break;
++		}
+ 		case LL_APB1_GRP1_PERIPH_DAC12:
+ 		case LL_APB1_GRP1_PERIPH_MDIOS:
+ 		default:
+diff --git a/dts/arm/st/mp1/stm32mp157.dtsi b/dts/arm/st/mp1/stm32mp157.dtsi
+index 97e72c7c..405d0440 100644
+--- a/dts/arm/st/mp1/stm32mp157.dtsi
++++ b/dts/arm/st/mp1/stm32mp157.dtsi
+@@ -172,7 +172,7 @@
+ 		wwdg: wwdg1: watchdog@4000a000 {
+ 			compatible = "st,stm32-window-watchdog";
+ 			reg = <0x4000a000 0x400>;
+-			clocks = <&rcc STM32_CLOCK_BUS_APB1 0x00000800>;
++			clocks = <&rcc STM32_CLOCK_BUS_APB1 0x10000000>;
+ 			interrupts = <0 7>;
+ 			status = "disabled";
+ 		};

@@ -7,7 +7,8 @@
  *  - every IMU sample (control_imu_sample, the IMU's sample callback),
  *  - a kernel timer every CONTROL_TICK_MS that disarms if the samples
  *    stopped: a lost data-ready interrupt never calls the callback, so
- *    the sampling path alone would never notice,
+ *    the sampling path alone would never notice. It also checks in with
+ *    the watchdog (wdog.h),
  *  - arm and disarm requests (control_arm, control_disarm), checked
  *    against the latest sample, so the caller gets the answer at once,
  *  - motion commands (control_command), stamped with the M4's clock when

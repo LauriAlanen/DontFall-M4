@@ -14,6 +14,7 @@
 #include "imu_health.h"
 #include "tilt.h"
 #include "uptime_us.h"
+#include "wdog.h"
 
 /* how often to look for samples that stopped */
 #define CONTROL_TICK_MS 10
@@ -66,6 +67,7 @@ static void on_tick(struct k_timer *timer)
 
 	ARG_UNUSED(timer);
 
+	wdog_checkin(WDOG_CONTROL_TICK);
 	K_SPINLOCK(&lock) {
 		if (in.now_us - last_sample_us > SAMPLE_TIMEOUT_US) {
 			supervisor_update(&sup, &in);
