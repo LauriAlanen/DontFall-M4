@@ -18,6 +18,7 @@
 #include <rclc/executor.h>
 #include <rmw_microros/rmw_microros.h>
 #include <rmw_microros/time_sync.h>
+#include <geometry_msgs/msg/twist.h>
 #include <sensor_msgs/msg/imu.h>
 #include <std_srvs/srv/set_bool.h>
 
@@ -60,12 +61,14 @@ static rcl_timer_t timer;
 static rcl_publisher_t diag_publisher;
 static rcl_timer_t diag_timer;
 static rcl_service_t arm_service;
+static rcl_subscription_t cmd_sub;
 static rclc_executor_t executor;
 static sensor_msgs__msg__Imu msg;
 static diagnostic_msgs__msg__DiagnosticArray diag_msg;
 static std_srvs__srv__SetBool_Request arm_req;
 static std_srvs__srv__SetBool_Response arm_res;
 static char arm_message[32];
+static geometry_msgs__msg__Twist cmd_msg;
 static char frame_id[] = "imu_link";
 
 /* Fields that never change: set once, the timer only fills in the data. */
@@ -161,6 +164,16 @@ static void arm_callback(const void *request, void *response)
 	}
 }
 
+/* cmd_vel (REP 103): linear.x forward speed, angular.z turn rate. The
+ * supervisor drops a non-finite value and times the command out.
+ */
+static void cmd_callback(const void *msgin)
+{
+	const geometry_msgs__msg__Twist *m = msgin;
+
+	control_command((float)m->linear.x, (float)m->angular.z);
+}
+
 /* print the failing call and bail out of create_entities() */
 #define UROS_CHECK(fn)                                                         \
 	do {                                                                   \
@@ -192,6 +205,14 @@ static bool create_entities(void)
 	UROS_CHECK(rclc_service_init_default(&arm_service, &node,
 					     ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, SetBool),
 					     "~/arm"));
+	/* best effort: teleop sends a steady stream, a lost message is
+	 * replaced by the next, and the timeout covers a stream that stops.
+	 * Global name, the one every ROS driving tool uses.
+	 */
+	UROS_CHECK(rclc_subscription_init_best_effort(&cmd_sub, &node,
+						      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg,
+										  Twist),
+						      "/cmd_vel"));
 	/* not fatal: without it stamps are M4 uptime instead of wall time */
 	if (rmw_uros_sync_session(TIME_SYNC_MS) != RMW_RET_OK) {
 		printk("uros: time sync with the Agent failed\n");
@@ -200,11 +221,13 @@ static bool create_entities(void)
 					    timer_callback, true));
 	UROS_CHECK(rclc_timer_init_default2(&diag_timer, &support, RCL_MS_TO_NS(DIAG_PERIOD_MS),
 					    diag_timer_callback, true));
-	UROS_CHECK(rclc_executor_init(&executor, &support.context, 3, &allocator));
+	UROS_CHECK(rclc_executor_init(&executor, &support.context, 4, &allocator));
 	UROS_CHECK(rclc_executor_add_timer(&executor, &timer));
 	UROS_CHECK(rclc_executor_add_timer(&executor, &diag_timer));
 	UROS_CHECK(rclc_executor_add_service(&executor, &arm_service, &arm_req, &arm_res,
 					     arm_callback));
+	UROS_CHECK(rclc_executor_add_subscription(&executor, &cmd_sub, &cmd_msg, cmd_callback,
+						  ON_NEW_DATA));
 	return true;
 }
 
@@ -227,6 +250,7 @@ static void destroy_entities(void)
 	rc = rclc_executor_fini(&executor);
 	rc = rcl_timer_fini(&diag_timer);
 	rc = rcl_timer_fini(&timer);
+	rc = rcl_subscription_fini(&cmd_sub, &node);
 	rc = rcl_service_fini(&arm_service, &node);
 	rc = rcl_publisher_fini(&diag_publisher, &node);
 	rc = rcl_publisher_fini(&publisher, &node);
@@ -238,6 +262,7 @@ static void destroy_entities(void)
 	timer = rcl_get_zero_initialized_timer();
 	diag_timer = rcl_get_zero_initialized_timer();
 	arm_service = rcl_get_zero_initialized_service();
+	cmd_sub = rcl_get_zero_initialized_subscription();
 	publisher = rcl_get_zero_initialized_publisher();
 	diag_publisher = rcl_get_zero_initialized_publisher();
 	node = rcl_get_zero_initialized_node();
@@ -262,6 +287,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 	timer = rcl_get_zero_initialized_timer();
 	diag_timer = rcl_get_zero_initialized_timer();
 	arm_service = rcl_get_zero_initialized_service();
+	cmd_sub = rcl_get_zero_initialized_subscription();
 	publisher = rcl_get_zero_initialized_publisher();
 	diag_publisher = rcl_get_zero_initialized_publisher();
 	node = rcl_get_zero_initialized_node();
@@ -290,7 +316,7 @@ static void uros_task(void *arg1, void *arg2, void *arg3)
 			k_sleep(K_MSEC(AGENT_SEARCH_MS));
 			continue;
 		}
-		printk("uros: publishing /dontfall_m4/imu, /diagnostics, serving ~/arm\n");
+		printk("uros: publishing /dontfall_m4/imu, /diagnostics, serving ~/arm, subscribed to /cmd_vel\n");
 
 		int64_t next_check = k_uptime_get() + AGENT_CHECK_MS;
 

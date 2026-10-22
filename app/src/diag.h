@@ -4,7 +4,9 @@
  * it). One status per part:
  *  - "dontfall_m4: imu": OK, or ERROR with the fault (imu_health.h)
  *  - "dontfall_m4: supervisor": "armed" or "disarmed (reason)"; WARN when
- *    a fault disarmed it, OK when it was asked to or never armed
+ *    a fault disarmed it, OK when it was asked to or never armed. Values
+ *    "speed" (m/s) and "turn" (rad/s): the setpoint in use, zero while
+ *    disarmed or when cmd_vel went quiet
  *
  * Builds the message only; uros.c publishes it.
  */

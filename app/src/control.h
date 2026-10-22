@@ -9,7 +9,9 @@
  *    stopped: a lost data-ready interrupt never calls the callback, so
  *    the sampling path alone would never notice,
  *  - arm and disarm requests (control_arm, control_disarm), checked
- *    against the latest sample, so the caller gets the answer at once.
+ *    against the latest sample, so the caller gets the answer at once,
+ *  - motion commands (control_command), stamped with the M4's clock when
+ *    they arrive.
  *
  * State changes are printed from the system work queue, never in the
  * sampling path.
@@ -25,6 +27,7 @@
 struct control_status {
 	enum supervisor_state state;
 	enum supervisor_reason reason;
+	struct supervisor_setpoint setpoint; /* in use now: zero if stale */
 };
 
 /* Start the supervisor DISARMED and the no-sample timer. Call before the
@@ -42,6 +45,9 @@ enum supervisor_reason control_arm(void);
 
 /* Always works. Any thread. */
 void control_disarm(void);
+
+/* A motion command (cmd_vel) arrived: speed m/s, turn rad/s. Any thread. */
+void control_command(float speed, float turn);
 
 /* Snapshot for telemetry. Any thread. */
 void control_status(struct control_status *out);

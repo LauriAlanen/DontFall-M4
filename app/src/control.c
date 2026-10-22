@@ -124,10 +124,20 @@ void control_disarm(void)
 	}
 }
 
+void control_command(float speed, float turn)
+{
+	const struct supervisor_setpoint cmd = {.speed = speed, .turn = turn};
+
+	K_SPINLOCK(&lock) {
+		supervisor_command(&sup, uptime_us(), &cmd);
+	}
+}
+
 void control_status(struct control_status *out)
 {
 	K_SPINLOCK(&lock) {
 		out->state = sup.state;
 		out->reason = sup.reason;
+		out->setpoint = supervisor_setpoint(&sup, uptime_us());
 	}
 }
