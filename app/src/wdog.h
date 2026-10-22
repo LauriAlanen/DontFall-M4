@@ -1,6 +1,6 @@
 /*
  * M4 watchdog: WWDG1 resets the M4 when the firmware hangs (DontFall
- * docs/failsafe-plan.md step 5). Linux sees that reset as a crash
+ * docs/archive/failsafe-plan.md step 5). Linux sees that reset as a crash
  * (stm32_rproc's "wdg" interrupt, EXTI 68): it writes a core dump and
  * restarts the firmware.
  *

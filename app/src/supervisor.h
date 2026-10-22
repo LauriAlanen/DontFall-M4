@@ -1,7 +1,8 @@
 /*
  * Supervisor: owns "may the motors run?" (DontFall
- * docs/failsafe-plan.md). The balance controller computes, the supervisor
- * decides whether its output is used; nothing else turns the motors on.
+ * docs/archive/failsafe-plan.md). The balance controller computes, the
+ * supervisor decides whether its output is used; nothing else turns the
+ * motors on.
  *
  * Plain C with no Zephyr dependencies, so the same file is built into the
  * firmware and into the host tests (tests/supervisor). Not thread safe:
