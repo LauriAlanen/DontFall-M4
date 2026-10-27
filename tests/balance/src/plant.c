@@ -30,10 +30,16 @@ struct rates {
 	float theta, theta_dot, omega;
 };
 
-static struct rates deriv(const struct plant_params *p, const struct plant_state *s, float torque)
+float plant_theta_ddot(const struct plant_params *p, const struct plant_state *s, float torque)
 {
 	float j = p->i_b + p->m * p->l * p->l;
-	float theta_ddot = (p->m * p->g * p->l * sinf(s->theta) - torque) / j;
+
+	return (p->m * p->g * p->l * sinf(s->theta) - torque) / j;
+}
+
+static struct rates deriv(const struct plant_params *p, const struct plant_state *s, float torque)
+{
+	float theta_ddot = plant_theta_ddot(p, s, torque);
 
 	return (struct rates){
 		.theta = s->theta_dot,

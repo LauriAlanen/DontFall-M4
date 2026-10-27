@@ -29,6 +29,9 @@ struct plant_state {
 /* One RK4 step of dt with the motor torque held at torque. */
 void plant_step(const struct plant_params *p, struct plant_state *s, float torque, float dt);
 
+/* The body's angular acceleration at this state and torque. */
+float plant_theta_ddot(const struct plant_params *p, const struct plant_state *s, float torque);
+
 /* Angular momentum about the pivot: constant when g = 0. */
 float plant_momentum(const struct plant_params *p, const struct plant_state *s);
 

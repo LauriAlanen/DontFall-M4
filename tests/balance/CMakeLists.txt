@@ -7,8 +7,8 @@ project(balance_test)
 # the simulated robot is test code, it never goes into the firmware;
 # the controller comes straight from the firmware sources
 target_include_directories(app PRIVATE ../../app/src)
-target_sources(app PRIVATE src/plant_test.c src/control_test.c src/plant.c
-               ../../app/src/balance.c)
+target_sources(app PRIVATE src/plant_test.c src/control_test.c src/robust_test.c
+               src/plant.c ../../app/src/balance.c ../../app/src/tilt.c)
 
 # -DBALANCE_CSV=1 prints the runs for plot.py (off by default)
 if(BALANCE_CSV)

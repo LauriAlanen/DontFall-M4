@@ -22,16 +22,19 @@
 #define SUBSTEPS 4
 #define DEG      (3.14159265f / 180.0f)
 
+/* run NULL: not printed */
 static inline void csv_header(const char *run)
 {
 #ifdef BALANCE_CSV
+	if (run == NULL) {
+		return;
+	}
 	printk("csv,%s,t,theta,theta_dot,omega,torque\n", run);
 #else
 	ARG_UNUSED(run);
 #endif
 }
 
-/* run NULL: not printed */
 static inline void csv_row(const char *run, float t, const struct plant_state *s, float torque)
 {
 #ifdef BALANCE_CSV
