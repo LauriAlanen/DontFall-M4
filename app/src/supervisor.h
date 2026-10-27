@@ -34,8 +34,11 @@
 #define SUPERVISOR_DEG (3.14159265f / 180.0f)
 /* arm only while held near upright by hand */
 #define SUPERVISOR_ARM_TILT     (5.0f * SUPERVISOR_DEG)
-/* a guess until the balance simulation says what can still be caught */
-#define SUPERVISOR_DISARM_TILT  (25.0f * SUPERVISOR_DEG)
+/* past what can still be caught (8.5 deg in the balance simulation with
+ * the guessed robot and motor, DontFall docs/balance-plan.md step 4b),
+ * with room for a better flywheel
+ */
+#define SUPERVISOR_DISARM_TILT  (15.0f * SUPERVISOR_DEG)
 /* the usual cmd_vel timeout */
 #define SUPERVISOR_CMD_TIMEOUT_US 500000
 

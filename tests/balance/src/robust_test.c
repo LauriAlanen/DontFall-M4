@@ -18,6 +18,7 @@
 #include "balance.h"
 #include "plant.h"
 #include "sim.h"
+#include "supervisor.h"
 #include "tilt.h"
 
 #define TILT_TAU  0.5f /* the firmware's filter time constant */
@@ -31,11 +32,13 @@ struct world {
 	float accel_noise;     /* m/s^2 std */
 	int delay;             /* control periods from sensing to torque */
 	float motor_lag;       /* s, first order; 0 = none */
+	float w_top;           /* rad/s, the motor's top speed; 0 = none */
 };
 
 /* The IMU as measured (docs/archive/imu-plan.md step 5): gyro std 1.5
  * mrad/s, accel std 0.025 m/s^2, bias left after calibration 0.2 mrad/s
- * (5x here). One sample of delay, 2 ms of motor lag.
+ * (5x here). One sample of delay, 2 ms of motor lag, and a GUESSED top
+ * speed of 60 rad/s for the gimbal motor.
  */
 static struct world measured(void)
 {
@@ -47,6 +50,7 @@ static struct world measured(void)
 		.accel_noise = 0.025f,
 		.delay = 1,
 		.motor_lag = 2e-3f,
+		.w_top = 60,
 	};
 }
 
@@ -57,6 +61,7 @@ struct run {
 	struct tilt t;
 	float queue[MAX_DELAY + 1]; /* commands on their way, oldest first */
 	float torque;               /* what the motor gives now */
+	float sat, longest_sat;     /* s the command has been at the limit */
 	uint32_t rng;
 	float clock;
 	const char *name;
@@ -117,8 +122,24 @@ static void start(struct run *r, const struct world *w, float theta, const char 
 	csv_header(name);
 }
 
-/* Run for secs, or until past 25 deg where the supervisor would disarm
- * (SUPERVISOR_DISARM_TILT); returns the largest |theta| on the way.
+/* What the motor gives at wheel speed omega: the back-EMF leaves less of
+ * its torque the faster it spins, none at w_top, when the torque would
+ * speed the wheel up further. Braking is never short. (pysim.py has the
+ * same.)
+ */
+static float motor(const struct world *w, float torque, float omega)
+{
+	float room;
+
+	if (w->w_top <= 0 || torque * omega <= 0) {
+		return torque;
+	}
+	room = w->p.t_max * fmaxf(0, 1 - fabsf(omega) / w->w_top);
+	return copysignf(fminf(fabsf(torque), room), torque);
+}
+
+/* Run for secs, or until past the tilt where the supervisor disarms;
+ * returns the largest |theta| on the way.
  */
 static float fly(struct run *r, float secs)
 {
@@ -137,14 +158,16 @@ static float fly(struct run *r, float secs)
 		}
 		r->queue[w->delay] = cmd;
 		cmd = r->queue[0];
+		r->sat = fabsf(cmd) >= r->b.t_max ? r->sat + DT : 0;
+		r->longest_sat = fmaxf(r->longest_sat, r->sat);
 		r->torque += w->motor_lag > 0 ? (cmd - r->torque) * (1 - expf(-DT / w->motor_lag))
 					      : cmd - r->torque;
 
 		csv_row(r->name, r->clock, &r->s, r->torque);
-		period(&w->p, &r->s, r->torque);
+		period(&w->p, &r->s, motor(w, r->torque, r->s.omega));
 		r->clock += DT;
 		worst = fmaxf(worst, fabsf(r->s.theta));
-		if (worst > 25 * DEG) {
+		if (worst > SUPERVISOR_DISARM_TILT) {
 			break;
 		}
 	}
@@ -193,7 +216,9 @@ ZTEST(balance_robust, test_imu_anywhere_on_the_body)
 }
 
 /* The robot with mass, centre of mass height and wheel inertia each
- * scaled by (m, l, iw) from what the gains were designed for.
+ * scaled by (m, l, iw) from what the gains were designed for. The motor
+ * has no top speed here, to see the gains alone: with the guessed 60
+ * rad/s the worst corner at 25% falls too, its wobble needs 63.
  */
 static struct world off_by(float m, float l, float iw)
 {
@@ -204,6 +229,7 @@ static struct world off_by(float m, float l, float iw)
 	w.p.l *= l;
 	w.p.i_w *= iw;
 	w.imu_height = w.p.l;
+	w.w_top = 0;
 	return w;
 }
 
@@ -234,7 +260,7 @@ ZTEST(balance_robust, test_falls_30_percent_off_the_worst_way)
 	struct run r;
 
 	start(&r, &w, 5 * DEG, "off30");
-	zassert_true(fly(&r, 15) > 25 * DEG, "still standing");
+	zassert_true(fly(&r, 15) > SUPERVISOR_DISARM_TILT, "still standing");
 }
 
 /* 20 samples (24 ms) of delay and a 20 ms motor lag together, ten times
@@ -248,6 +274,67 @@ ZTEST(balance_robust, test_delay_and_lag_margin)
 	w.delay = 20;
 	w.motor_lag = 20e-3f;
 	zassert_true(recover_and_stand(&w, 4, 3, "slow") < 0.5f * DEG);
+}
+
+/* Step 4b: the limits, with the guessed motor (0.2 N m, 60 rad/s top
+ * speed) and the measured IMU. Past them the wheel can't take up the
+ * momentum fast enough: the motor runs out of speed, not torque (torque
+ * alone would catch 16 deg, asin(t_max / m g l)).
+ */
+
+/* A proposed supervisor condition for step 5: the command at the limit
+ * this long means it is falling (or pinned against something, where the
+ * tilt never gets there). Every catch below stays under 0.18 s, every
+ * fall goes over 0.31 s before it reaches the disarm tilt.
+ */
+#define SAT_TOO_LONG 0.25f
+
+static void caught(const struct world *w, float theta, float push)
+{
+	struct run r;
+
+	start(&r, w, theta, NULL);
+	r.s.theta_dot = push;
+	r.s.omega = -push; /* the wheel keeps its own speed */
+	zassert_true(fly(&r, 5) < SUPERVISOR_DISARM_TILT, "fell");
+	zassert_true(fabsf(r.s.theta) < 0.5f * DEG, "not back up");
+	zassert_true(r.longest_sat < SAT_TOO_LONG, "saturated %d ms",
+		     (int)(r.longest_sat * 1000));
+}
+
+static void falls(const struct world *w, float theta, float push)
+{
+	struct run r;
+
+	start(&r, w, theta, NULL);
+	r.s.theta_dot = push;
+	r.s.omega = -push;
+	zassert_true(fly(&r, 5) > SUPERVISOR_DISARM_TILT, "caught");
+	zassert_true(r.longest_sat > SAT_TOO_LONG, "saturated only %d ms",
+		     (int)(r.longest_sat * 1000));
+}
+
+/* Let go from rest: caught from 8.5 deg, not from 9. The supervisor's
+ * arm limit (5 deg) is inside, its disarm limit (15 deg) well outside.
+ */
+ZTEST(balance_robust, test_largest_catch_from_rest)
+{
+	struct world w = measured();
+
+	zassert_true(SUPERVISOR_ARM_TILT < 8.5f * DEG);
+	caught(&w, 8.5f * DEG, 0);
+	caught(&w, -8.5f * DEG, 0);
+	falls(&w, 9 * DEG, 0);
+}
+
+/* A push from upright: 1.2 rad/s caught (it leans to 6 deg), 1.3 not. */
+ZTEST(balance_robust, test_largest_push)
+{
+	struct world w = measured();
+
+	caught(&w, 0, 1.2f);
+	caught(&w, 0, -1.2f);
+	falls(&w, 0, 1.3f);
 }
 
 ZTEST_SUITE(balance_robust, NULL, NULL, NULL, NULL, NULL);

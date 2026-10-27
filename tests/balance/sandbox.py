@@ -14,8 +14,8 @@ when a weight slider moves.
 - Robot: how far the real robot is from what the gains were designed
   for (x1 = the guesses).
 - Trouble: IMU offset, gyro noise, delay, motor lag, torque limit and the
-  motor's top speed.
-- Push it with the buttons; past 25 deg the supervisor disarms and it
+  motor's top speed (less torque the faster the wheel spins, pysim.py).
+- Push it with the buttons; past 15 deg the supervisor disarms and it
   falls over. Reset starts again from 5 deg.
 """
 
@@ -29,50 +29,14 @@ import numpy as np
 from matplotlib.widgets import Button, CheckButtons, Slider
 
 import lqr
+from pysim import Robot, motor_limit
 
 DT = lqr.DT
 SUBSTEPS = 4
-DISARM_TILT = math.radians(25)  # SUPERVISOR_DISARM_TILT
+DISARM_TILT = math.radians(15)  # SUPERVISOR_DISARM_TILT
 WINDOW = 6                      # s of history in the plots
 PLOT_EVERY = 4                  # store every 4th sample for the plots
 PUSH = 0.5                      # rad/s on the body, like the push test
-
-
-class Robot:
-    """The plant (plant.c) with the motor in front of it."""
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self, theta=math.radians(5)):
-        self.theta, self.theta_dot, self.omega = theta, 0.0, 0.0
-        self.wheel_angle = 0.0  # absolute, for drawing the spoke
-        self.torque = 0.0       # what the motor actually gives
-        self.fallen = False
-        self.t = 0.0
-
-    def deriv(self, p, x, torque):
-        theta, theta_dot, omega = x
-        j = p["i_b"] + p["m"] * p["l"] ** 2
-        theta_ddot = (p["m"] * lqr.G * p["l"] * math.sin(theta) - torque) / j
-        # lying on the floor: it holds the body unless pushed back up
-        if abs(theta) >= math.pi / 2 and theta_ddot * theta > 0:
-            theta_dot = theta_ddot = 0.0
-        return (theta_dot, theta_ddot, torque / p["i_w"] - theta_ddot)
-
-    def step(self, p, torque, h):
-        x = (self.theta, self.theta_dot, self.omega)
-        k1 = self.deriv(p, x, torque)
-        k2 = self.deriv(p, [a + h / 2 * b for a, b in zip(x, k1)], torque)
-        k3 = self.deriv(p, [a + h / 2 * b for a, b in zip(x, k2)], torque)
-        k4 = self.deriv(p, [a + h * b for a, b in zip(x, k3)], torque)
-        self.theta, self.theta_dot, self.omega = (
-            a + h / 6 * (b + 2 * c + 2 * d + e) for a, b, c, d, e in zip(x, k1, k2, k3, k4))
-        self.wheel_angle += h * (self.theta_dot + self.omega)
-        # the floor
-        if abs(self.theta) >= math.pi / 2:
-            self.theta = math.copysign(math.pi / 2, self.theta)
-            self.theta_dot = 0.0
 
 
 class Sandbox:
@@ -216,10 +180,7 @@ class Sandbox:
         r = self.robot
         lag = self.s_lag.val / 1000
         r.torque += (cmd - r.torque) * (1 - math.exp(-DT / lag)) if lag else cmd - r.torque
-        # out of speed: no more torque the way that speeds it up
-        if abs(r.omega) >= self.s_wtop.val and r.torque * r.omega > 0:
-            return 0.0
-        return r.torque
+        return motor_limit(r.torque, r.omega, lqr.T_MAX, self.s_wtop.val)
 
     def tick(self):
         r, p = self.robot, self.params()
@@ -251,12 +212,12 @@ class Sandbox:
         self.spoke.set_data([top[0], top[0] + 0.06 * math.sin(a)],
                             [top[1], top[1] + 0.06 * math.cos(a)])
         saturated = abs(r.torque) >= lqr.T_MAX * 0.999
-        out_of_speed = abs(r.omega) >= self.s_wtop.val
+        out_of_speed = abs(r.omega) >= 0.9 * self.s_wtop.val
         if r.fallen:
-            self.status.set_text("FELL: supervisor disarmed at 25°")
+            self.status.set_text("FELL: supervisor disarmed at 15°")
             self.status.set_color("#c0504d")
         elif out_of_speed:
-            self.status.set_text("wheel at the motor's top speed")
+            self.status.set_text("wheel near the motor's top speed")
             self.status.set_color("#d68a00")
         elif saturated:
             self.status.set_text("torque at the limit")

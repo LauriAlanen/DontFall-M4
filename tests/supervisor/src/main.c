@@ -112,11 +112,11 @@ ZTEST(supervisor, test_disarm_on_imu_fault)
 ZTEST(supervisor, test_disarm_on_tilt)
 {
 	zassert_equal(arm(), SUPERVISOR_OK);
-	in.tilt = 24.9f * DEG;
+	in.tilt = 14.9f * DEG;
 	run(100);
 	zassert_true(supervisor_armed(&s), "disarmed inside the limit");
 
-	in.tilt = -25.1f * DEG;
+	in.tilt = -15.1f * DEG;
 	run(1);
 	zassert_false(supervisor_armed(&s));
 	zassert_equal(supervisor_reason(&s), SUPERVISOR_TILT);
