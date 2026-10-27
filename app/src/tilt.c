@@ -61,6 +61,7 @@ void tilt_update(struct tilt *t, const float accel[3], const float gyro[3], floa
 	if (!t->started) {
 		t->roll = roll_acc;
 		t->pitch = pitch_acc;
+		t->pitch_rate = w[1];
 		t->started = true;
 		return;
 	}
@@ -72,6 +73,8 @@ void tilt_update(struct tilt *t, const float accel[3], const float gyro[3], floa
 	float sr = sinf(t->roll), cr = cosf(t->roll);
 	float roll_rate = w[0] + (w[1] * sr + w[2] * cr) * tanf(t->pitch);
 	float pitch_rate = w[1] * cr - w[2] * sr;
+
+	t->pitch_rate = pitch_rate;
 
 	/* first-order low pass toward the accelerometer, corner 1/tau */
 	float k = dt / (t->tau + dt);

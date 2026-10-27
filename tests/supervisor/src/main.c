@@ -85,9 +85,67 @@ ZTEST(supervisor, test_arm_refused)
 	zassert_equal(arm(), SUPERVISOR_TILT);
 	in.tilt = NAN;
 	zassert_equal(arm(), SUPERVISOR_TILT);
+	in.tilt = 0;
+
+	in.rate = 0.21f;
+	zassert_equal(arm(), SUPERVISOR_MOVING);
+	in.rate = -0.21f;
+	zassert_equal(arm(), SUPERVISOR_MOVING);
+	in.rate = NAN;
+	zassert_equal(arm(), SUPERVISOR_MOVING);
 
 	zassert_false(supervisor_armed(&s));
 	zassert_equal(supervisor_reason(&s), SUPERVISOR_BOOT, "refusal overwrote the reason");
+}
+
+/* Held still means under the limit, not exactly 0: a hand trembles. */
+ZTEST(supervisor, test_arm_while_held_by_hand)
+{
+	in.rate = -0.19f;
+	zassert_equal(arm(), SUPERVISOR_OK);
+	/* once armed, moving is the controller's job */
+	in.rate = 3.0f;
+	run(10);
+	zassert_true(supervisor_armed(&s));
+}
+
+/* Saturated for longer than the limit disarms; shorter bursts, as in
+ * every catch, don't add up.
+ */
+ZTEST(supervisor, test_disarm_when_saturated_too_long)
+{
+	const int limit = SUPERVISOR_SATURATED_US / PERIOD_US;
+
+	zassert_equal(arm(), SUPERVISOR_OK);
+	for (int i = 0; i < 5; i++) {
+		in.saturated = true;
+		run(limit - 1);
+		in.saturated = false;
+		run(1);
+	}
+	zassert_true(supervisor_armed(&s), "short bursts added up");
+
+	in.saturated = true;
+	run(limit);
+	zassert_true(supervisor_armed(&s), "disarmed early");
+	run(2);
+	zassert_false(supervisor_armed(&s));
+	zassert_equal(supervisor_reason(&s), SUPERVISOR_SATURATED);
+}
+
+/* A saturation left over from before arming doesn't count. */
+ZTEST(supervisor, test_saturation_restarts_on_arm)
+{
+	const int limit = SUPERVISOR_SATURATED_US / PERIOD_US;
+
+	zassert_equal(arm(), SUPERVISOR_OK);
+	in.saturated = true;
+	run(limit - 10);
+	supervisor_disarm(&s);
+	run(100);
+	zassert_equal(arm(), SUPERVISOR_OK);
+	run(20);
+	zassert_true(supervisor_armed(&s));
 }
 
 ZTEST(supervisor, test_arm_while_armed_is_ok)

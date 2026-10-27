@@ -1,7 +1,13 @@
 /*
  * Control: what runs on every IMU sample after the IMU's own work. Owns
- * the supervisor (supervisor.h) now; the balance controller joins it later
- * (DontFall docs/balance-plan.md).
+ * the supervisor (supervisor.h) and the balance controller (balance.h,
+ * DontFall docs/balance-plan.md): on every sample the supervisor checks,
+ * then the controller computes the wheel torque, zero unless armed.
+ *
+ * There is no motor yet (balance plan step 5): the torque is only stored
+ * for telemetry, and the wheel speed the controller sees is 0 until
+ * there is an encoder. theta is the IMU's pitch (the wheel axle is the
+ * body's y axis, tilt.h), theta_dot the gyro's pitch rate.
  *
  * The supervisor is fed from three places, serialised by one lock:
  *  - every IMU sample (control_imu_sample, the IMU's sample callback),
@@ -29,6 +35,8 @@ struct control_status {
 	enum supervisor_state state;
 	enum supervisor_reason reason;
 	struct supervisor_setpoint setpoint; /* in use now: zero if stale */
+	float torque;                        /* N m, wheel torque wanted now */
+	uint32_t loop_max_ns;                /* longest supervisor + controller run */
 };
 
 /* Start the supervisor DISARMED and the no-sample timer. Call before the
@@ -37,7 +45,7 @@ struct control_status {
 void control_init(void);
 
 /* The IMU's sample callback (imu_sample_cb_t). */
-void control_imu_sample(uint32_t now_us, bool ok, float roll, float pitch);
+void control_imu_sample(uint32_t now_us, bool ok, float roll, float pitch, float pitch_rate);
 
 /* Arm if the latest sample allows it (supervisor_arm()): SUPERVISOR_OK,
  * or why not. Any thread.

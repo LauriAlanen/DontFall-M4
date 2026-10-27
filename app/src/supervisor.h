@@ -11,9 +11,12 @@
  *
  * States:
  *  - DISARMED: motors off. Leaves on an arm request when all the arm
- *    conditions hold.
+ *    conditions hold: IMU healthy, near upright and held still (so the
+ *    tilt filter is on the true angle, not on what a falling body's
+ *    accelerometer reads; docs/balance-plan.md step 4a).
  *  - ARMED: controller output used. Leaves on a disarm request or any
- *    disarm condition.
+ *    disarm condition: IMU fault, past the disarm tilt, or the
+ *    controller's output at its limit for too long.
  *
  * A disarm latches: the supervisor never re-arms by itself, also when the
  * cause goes away. The reason for the last disarm is kept for reporting.
@@ -39,6 +42,14 @@
  * with room for a better flywheel
  */
 #define SUPERVISOR_DISARM_TILT  (15.0f * SUPERVISOR_DEG)
+/* "held still" for arming: a steady hand stays well under this */
+#define SUPERVISOR_ARM_RATE     0.2f /* rad/s */
+/* Controller output at its limit this long means it is falling, or
+ * pinned against something where the tilt never gets past the limit.
+ * Catches in the simulation stay under 0.18 s, falls go over 0.31 s
+ * (balance plan step 4b).
+ */
+#define SUPERVISOR_SATURATED_US 250000
 /* the usual cmd_vel timeout */
 #define SUPERVISOR_CMD_TIMEOUT_US 500000
 
@@ -54,15 +65,19 @@ enum supervisor_reason {
 	SUPERVISOR_REQUEST,
 	SUPERVISOR_IMU,
 	SUPERVISOR_TILT,
+	SUPERVISOR_MOVING,    /* arm refused: not held still */
+	SUPERVISOR_SATURATED, /* controller at its limit too long */
 };
 
 /* What the supervisor looks at, fresh for every call. New conditions
- * (motor driver fault, controller saturated) become new fields here.
+ * (motor driver fault) become new fields here.
  */
 struct supervisor_input {
 	uint32_t now_us; /* any free-running microsecond clock, may wrap */
 	bool imu_ok;
-	float tilt; /* rad from upright, in any direction (0..pi) */
+	float tilt;      /* rad from upright, in any direction (0..pi) */
+	float rate;      /* rad/s the body tilts at (the balance axis) */
+	bool saturated;  /* the controller's output is at its limit */
 };
 
 /* Wanted motion: forward speed (m/s) and turn rate (rad/s), REP 103. */
@@ -77,6 +92,8 @@ struct supervisor {
 	bool have_cmd;
 	uint32_t cmd_us;
 	struct supervisor_setpoint cmd;
+	bool saturated;
+	uint32_t saturated_us; /* since when */
 };
 
 /* Start DISARMED, reason SUPERVISOR_BOOT. */

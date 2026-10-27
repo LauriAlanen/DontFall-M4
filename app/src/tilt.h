@@ -23,9 +23,10 @@
 #include <stdbool.h>
 
 struct tilt {
-	float tau;   /* s */
-	float roll;  /* rad */
-	float pitch; /* rad */
+	float tau;        /* s */
+	float roll;       /* rad */
+	float pitch;      /* rad */
+	float pitch_rate; /* rad/s, straight from the gyro, not filtered */
 	bool started;
 };
 

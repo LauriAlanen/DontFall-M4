@@ -52,6 +52,16 @@ void supervisor_update(struct supervisor *s, const struct supervisor_input *in)
 		return;
 	}
 	r = check(in, SUPERVISOR_DISARM_TILT);
+	if (r == SUPERVISOR_OK && in->saturated) {
+		if (!s->saturated) {
+			s->saturated = true;
+			s->saturated_us = in->now_us;
+		} else if (in->now_us - s->saturated_us > SUPERVISOR_SATURATED_US) {
+			r = SUPERVISOR_SATURATED;
+		}
+	} else {
+		s->saturated = false;
+	}
 	if (r != SUPERVISOR_OK) {
 		s->state = SUPERVISOR_DISARMED;
 		s->reason = r;
@@ -69,8 +79,12 @@ enum supervisor_reason supervisor_arm(struct supervisor *s, const struct supervi
 	if (r != SUPERVISOR_OK) {
 		return r;
 	}
+	if (!(fabsf(in->rate) <= SUPERVISOR_ARM_RATE)) {
+		return SUPERVISOR_MOVING;
+	}
 	s->state = SUPERVISOR_ARMED;
 	s->reason = SUPERVISOR_OK;
+	s->saturated = false;
 	/* start from standing still, not from a command sent before */
 	s->have_cmd = false;
 	return SUPERVISOR_OK;
@@ -116,6 +130,10 @@ const char *supervisor_reason_str(enum supervisor_reason r)
 		return "imu";
 	case SUPERVISOR_TILT:
 		return "tilt";
+	case SUPERVISOR_MOVING:
+		return "moving";
+	case SUPERVISOR_SATURATED:
+		return "saturated";
 	}
 	return "?";
 }

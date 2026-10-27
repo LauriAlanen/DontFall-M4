@@ -346,7 +346,7 @@ static void on_drdy(const struct device *dev, const struct sensor_trigger *trig)
 	}
 
 	if (sample_cb) {
-		sample_cb(t, use, tilt.roll, tilt.pitch);
+		sample_cb(t, use, tilt.roll, tilt.pitch, tilt.pitch_rate);
 	}
 
 	if (use) {

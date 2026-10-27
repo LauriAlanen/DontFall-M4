@@ -11,6 +11,7 @@
 #include <zephyr/spinlock.h>
 #include <zephyr/sys/printk.h>
 
+#include "balance.h"
 #include "imu_health.h"
 #include "tilt.h"
 #include "uptime_us.h"
@@ -20,12 +21,21 @@
 #define CONTROL_TICK_MS 10
 /* the IMU's own no-data limit: ~12 samples at 850 Hz */
 #define SAMPLE_TIMEOUT_US IMU_HEALTH_TIMEOUT_US
+/* N m, a GUESS like the simulation's (plant_guess.t_max) until the
+ * GM4108H's datasheet numbers are in
+ */
+#define TORQUE_MAX 0.2f
+/* no encoder yet: the controller sees the wheel standing still */
+#define WHEEL_SPEED 0.0f
 
 static struct k_spinlock lock;
 static struct supervisor sup;      /* guarded by lock */
 static uint32_t last_sample_us;    /* guarded by lock */
 static struct supervisor_input last_in; /* guarded by lock, imu_ok false until a sample */
 static struct control_status shown; /* guarded by lock: last one printed */
+static struct balance bal;          /* constant after init */
+static float torque;                /* guarded by lock; the motor stub */
+static uint32_t loop_max_cycles;    /* guarded by lock */
 
 static struct k_timer tick;
 static struct k_work print_work;
@@ -40,19 +50,28 @@ static void note_change(void)
 	}
 }
 
-void control_imu_sample(uint32_t now_us, bool ok, float roll, float pitch)
+void control_imu_sample(uint32_t now_us, bool ok, float roll, float pitch, float pitch_rate)
 {
-	const struct supervisor_input in = {
+	uint32_t start = k_cycle_get_32();
+	struct supervisor_input in = {
 		.now_us = now_us,
 		.imu_ok = ok,
 		.tilt = ok ? tilt_from_upright(roll, pitch) : NAN,
+		.rate = ok ? pitch_rate : NAN,
 	};
 
 	K_SPINLOCK(&lock) {
+		bool armed;
+
+		/* saturated: the previous sample's output, one sample late */
+		in.saturated = fabsf(torque) >= bal.t_max;
 		last_sample_us = now_us;
 		last_in = in;
 		supervisor_update(&sup, &in);
 		note_change();
+		armed = ok && supervisor_armed(&sup);
+		torque = balance_update(&bal, pitch, pitch_rate, WHEEL_SPEED, armed);
+		loop_max_cycles = MAX(loop_max_cycles, k_cycle_get_32() - start);
 	}
 }
 
@@ -72,6 +91,7 @@ static void on_tick(struct k_timer *timer)
 		if (in.now_us - last_sample_us > SAMPLE_TIMEOUT_US) {
 			supervisor_update(&sup, &in);
 			note_change();
+			torque = 0.0f;
 		}
 	}
 }
@@ -85,15 +105,17 @@ static void print_state(struct k_work *work)
 
 	control_status(&s);
 	if (s.state == SUPERVISOR_ARMED) {
-		printk("control: ARMED\n");
+		printk("control: ARMED (loop max %u ns)\n", s.loop_max_ns);
 	} else {
-		printk("control: DISARMED (%s)\n", supervisor_reason_str(s.reason));
+		printk("control: DISARMED (%s, loop max %u ns)\n", supervisor_reason_str(s.reason),
+		       s.loop_max_ns);
 	}
 }
 
 void control_init(void)
 {
 	supervisor_init(&sup);
+	balance_init(&bal, TORQUE_MAX);
 	shown = (struct control_status){.state = sup.state, .reason = sup.reason};
 	k_work_init(&print_work, print_state);
 	k_timer_init(&tick, on_tick, NULL);
@@ -123,6 +145,7 @@ void control_disarm(void)
 	K_SPINLOCK(&lock) {
 		supervisor_disarm(&sup);
 		note_change();
+		torque = 0.0f;
 	}
 }
 
@@ -141,5 +164,7 @@ void control_status(struct control_status *out)
 		out->state = sup.state;
 		out->reason = sup.reason;
 		out->setpoint = supervisor_setpoint(&sup, uptime_us());
+		out->torque = torque;
+		out->loop_max_ns = (uint32_t)k_cyc_to_ns_floor64(loop_max_cycles);
 	}
 }

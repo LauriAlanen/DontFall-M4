@@ -23,6 +23,7 @@ target_sources(app PRIVATE
     src/imu_health.c
     src/tilt.c
     src/supervisor.c
+    src/balance.c
     src/control.c
     src/diag.c
     src/wdog.c
