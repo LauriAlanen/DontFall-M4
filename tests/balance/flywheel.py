@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flywheel size for the motor (docs/balance-plan.md step 4b).
+"""Flywheel size for the motor (docs/archive/balance-plan.md step 4b).
 
 Runs on the PC (numpy, scipy, matplotlib):
 

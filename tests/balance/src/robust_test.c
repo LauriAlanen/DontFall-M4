@@ -1,5 +1,5 @@
 /*
- * Robustness of the balance controller (docs/balance-plan.md step 4): the
+ * Robustness of the balance controller (docs/archive/balance-plan.md step 4): the
  * real robot will differ from the model the gains were designed for.
  *
  * Unlike control_test.c the controller doesn't see the true state: an

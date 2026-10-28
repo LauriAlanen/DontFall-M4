@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot the balance simulator's runs (docs/balance-plan.md).
+"""Plot the balance simulator's runs (docs/archive/balance-plan.md).
 
 Runs on the PC (needs matplotlib), on the log of a CSV build:
 

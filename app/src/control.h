@@ -1,7 +1,7 @@
 /*
  * Control: what runs on every IMU sample after the IMU's own work. Owns
  * the supervisor (supervisor.h) and the balance controller (balance.h,
- * DontFall docs/balance-plan.md): on every sample the supervisor checks,
+ * DontFall docs/archive/balance-plan.md): on every sample the supervisor checks,
  * then the controller computes the wheel torque, zero unless armed.
  *
  * There is no motor yet (balance plan step 5): the torque is only stored

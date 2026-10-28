@@ -13,7 +13,7 @@
  *  - DISARMED: motors off. Leaves on an arm request when all the arm
  *    conditions hold: IMU healthy, near upright and held still (so the
  *    tilt filter is on the true angle, not on what a falling body's
- *    accelerometer reads; docs/balance-plan.md step 4a).
+ *    accelerometer reads; docs/archive/balance-plan.md step 4a).
  *  - ARMED: controller output used. Leaves on a disarm request or any
  *    disarm condition: IMU fault, past the disarm tilt, or the
  *    controller's output at its limit for too long.
@@ -38,7 +38,7 @@
 /* arm only while held near upright by hand */
 #define SUPERVISOR_ARM_TILT     (5.0f * SUPERVISOR_DEG)
 /* past what can still be caught (8.5 deg in the balance simulation with
- * the guessed robot and motor, DontFall docs/balance-plan.md step 4b),
+ * the guessed robot and motor, DontFall docs/archive/balance-plan.md step 4b),
  * with room for a better flywheel
  */
 #define SUPERVISOR_DISARM_TILT  (15.0f * SUPERVISOR_DEG)

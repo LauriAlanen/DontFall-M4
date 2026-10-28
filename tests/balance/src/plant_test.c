@@ -1,5 +1,5 @@
 /*
- * Tests of the simulated balancer itself (docs/balance-plan.md step 1),
+ * Tests of the simulated balancer itself (docs/archive/balance-plan.md step 1),
  * so the controller tests stand on a model that is known right.
  *
  * SPDX-License-Identifier: Apache-2.0

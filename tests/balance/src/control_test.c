@@ -1,6 +1,6 @@
 /*
  * Closed-loop tests of the balance controller (app/src/balance.c) on the
- * simulated robot (docs/balance-plan.md step 3). Control logic: a wrong
+ * simulated robot (docs/archive/balance-plan.md step 3). Control logic: a wrong
  * sign spins the wheel up at full torque.
  *
  * The plant is the full nonlinear model with the guessed parameters; the

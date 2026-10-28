@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LQR gains for the reaction wheel balancer (docs/balance-plan.md step 2).
+"""LQR gains for the reaction wheel balancer (docs/archive/balance-plan.md step 2).
 
 Runs on the PC (needs numpy and scipy):
 

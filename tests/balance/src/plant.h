@@ -1,5 +1,5 @@
 /*
- * Simulated reaction wheel balancer (docs/balance-plan.md, "The model").
+ * Simulated reaction wheel balancer (docs/archive/balance-plan.md, "The model").
  * Test code only, never in the firmware.
  *
  * SPDX-License-Identifier: Apache-2.0

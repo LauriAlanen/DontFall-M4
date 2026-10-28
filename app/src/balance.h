@@ -1,6 +1,6 @@
 /*
  * Balance controller for the reaction wheel balancer (DontFall
- * docs/balance-plan.md): full-state feedback
+ * docs/archive/balance-plan.md): full-state feedback
  *
  *     torque = -(k[0] theta + k[1] theta_dot + k[2] omega)
  *

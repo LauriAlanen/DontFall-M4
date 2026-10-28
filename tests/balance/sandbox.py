@@ -5,7 +5,7 @@ Runs on the PC (numpy, scipy, matplotlib with a display):
 
     tests/balance/sandbox.py
 
-A toy to get a feel for the controller (docs/balance-plan.md), not a
+A toy to get a feel for the controller (docs/archive/balance-plan.md), not a
 test: the model is a Python copy of tests/balance/src/plant.c and the
 controller of app/src/balance.c. The gains come from lqr.py, recomputed
 when a weight slider moves.
